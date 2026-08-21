@@ -1028,10 +1028,90 @@ what proved the deployment actually works here too.
   "verify before assuming" habit as everywhere else in this project,
   just applied to cloud resources instead of code.
 
-## ⬜ Phase 12 - Terraform
+## ✅ Phase 12 - Terraform
 
-The Phase 11 infrastructure re-created as code: `main.tf`, `variables.tf`,
-`outputs.tf`, `providers.tf`, `vpc.tf`, `iam.tf`, `ecr.tf`, `rds.tf`.
+**Problem it solves:** Phase 11's infrastructure only existed as a
+sequence of AWS CLI commands run once, by hand. Nothing recorded *what*
+was provisioned in a form that could be reviewed, diffed, or rebuilt
+identically - the CLI history was the only record, and re-running it
+would either fail (resources already exist) or silently duplicate
+everything.
+
+**Why DevFlow needs it:** this is what makes Phase 11's infrastructure a
+real artifact instead of a one-time action - reviewable in a PR,
+reproducible from scratch, and the foundation Phase 14 (EKS) needs
+before layering Kubernetes on top of hand-run `aws eks create-cluster`
+commands would.
+
+**How it works:**
+
+- **`terraform/`**: `providers.tf` (AWS provider + S3 remote-state
+  backend), `variables.tf`, `main.tf` (shared data sources - the latest
+  Amazon Linux 2023 AMI via SSM, current account ID, available AZs),
+  `vpc.tf` (VPC, public subnet, IGW, route table, security group),
+  `iam.tf` (the EC2 role - same least-privilege shape as Phase 11:
+  SSM Session Manager + read `/devflow/*` + write `/devflow/*` logs,
+  nothing more), `ec2.tf` (the instance + Elastic IP), `outputs.tf`.
+  Every resource, tag, and IAM statement matches what Phase 11 already
+  had - this phase's job was encoding the architecture, not redesigning
+  it.
+- **No `ecr.tf`, no `rds.tf`** - despite both being in the original
+  phase plan. The app pulls from GHCR (Phase 9) and its database is
+  Supabase (Phase 1); writing Terraform for either would codify
+  infrastructure nothing in the app actually uses, the same call Phase
+  11 already made about the underlying resources themselves.
+- **Remote state in S3** (`devflow-terraform-state-<account-id>`,
+  versioned, encrypted, public access blocked), locked via S3's own
+  conditional-write locking (`use_lockfile = true`, Terraform 1.10+) -
+  no separate DynamoDB table needed just to hold a lock. The bucket
+  itself is bootstrapped once via the AWS CLI, outside Terraform - the
+  thing holding Terraform's state can't be created by that same
+  Terraform run.
+- **Secrets stay out of Terraform entirely.** The `/devflow/*` SSM
+  parameters Phase 11 created aren't Terraform resources here - Terraform
+  only grants the IAM role permission to *read* that path, the same way
+  it did when set up manually. Managing the actual secret values through
+  Terraform would put their plaintext into the state file, and from
+  there into the S3 backend - a real, well-known Terraform footgun, not
+  a hypothetical one. `NEXT_PUBLIC_SITE_URL` specifically doesn't need
+  SSM at all: it's interpolated straight into the rendered user-data
+  script from the Elastic IP's own `aws_eip.app.public_ip` attribute,
+  since Terraform already knows that address before the instance boots.
+
+**How it's configured:** `terraform init` (reads the S3 backend config
+from `providers.tf`), `terraform plan`, `terraform apply` - see
+`docs/development.md` for the exact commands and required env vars.
+
+**How it integrates:** provisions the exact same architecture
+`docs/devops-roadmap.md`'s Phase 11 entry describes and runs the exact
+same container Phase 9 publishes - this phase changed *how* the
+infrastructure comes to exist, not what it is.
+
+**What was learned:**
+
+- **Destroy-and-recreate was the right call over `terraform import` for
+  this phase's scope.** Import is a real, valuable skill, but it's
+  fiddly precisely when it matters most (security group rule ordering,
+  tag drift, and default resource attributes can all produce a
+  perpetual "diff" after import that looks like configuration drift but
+  is just an artifact of the import itself). With a single-instance,
+  no-shared-traffic deployment, tearing down and reapplying fresh had
+  no real cost beyond a few minutes of downtime and a new IP - for
+  infrastructure serving live traffic that couldn't be true, and import
+  would be the only responsible option.
+- **A circular-looking dependency (the instance's own user-data needs
+  its future public IP) has a non-circular answer**: allocate the
+  `aws_eip` as a standalone resource *before* the instance exists, then
+  reference `aws_eip.app.public_ip` when rendering the instance's
+  `user_data`. Terraform's dependency graph resolves this correctly
+  because the EIP doesn't depend on the instance at all - only the
+  separate `aws_eip_association` does.
+- Ran every `terraform` command with `MSYS_NO_PATHCONV=1` set from the
+  start, on the assumption that Phase 11's Git-Bash-on-Windows path
+  mangling would affect any native Windows binary given a `/`-prefixed
+  argument, not something specific to the AWS CLI - didn't hit the bug
+  this time, but applying the same defensive habit rather than waiting
+  to get bitten again felt like the right call.
 
 ## ⬜ Phase 13 - Kubernetes locally
 

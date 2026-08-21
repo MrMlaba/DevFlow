@@ -226,8 +226,45 @@ EC2 instance's own IAM role can read them.
 into Windows paths (MSYS path conversion), which breaks AWS CLI
 parameter names and `file://` references in ways that look like a real
 AWS error but aren't. Set `MSYS_NO_PATHCONV=1` before running `aws`
-commands from Git Bash. PowerShell and a real Linux/macOS shell don't
-have this problem.
+commands (and, defensively, `terraform` too) from Git Bash. PowerShell
+and a real Linux/macOS shell don't have this problem.
+
+## Terraform (Phase 12)
+
+`terraform/` codifies the exact infrastructure Phase 11 provisioned by
+hand - see `docs/devops-roadmap.md` (Phase 12) for the full reasoning
+(what's deliberately not there, and why secrets never touch Terraform
+state).
+
+One-time bootstrap - the S3 bucket backing Terraform's own state has to
+exist before Terraform can use it as a backend, so it's created via the
+CLI, not Terraform itself:
+
+```bash
+aws s3api create-bucket --bucket devflow-terraform-state-<your-account-id> --region us-east-1
+aws s3api put-bucket-versioning --bucket devflow-terraform-state-<your-account-id> --versioning-configuration Status=Enabled --region us-east-1
+aws s3api put-bucket-encryption --bucket devflow-terraform-state-<your-account-id> --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' --region us-east-1
+aws s3api put-public-access-block --bucket devflow-terraform-state-<your-account-id> --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true --region us-east-1
+```
+
+Update the bucket name in `terraform/providers.tf`'s `backend "s3"`
+block to match, then:
+
+```bash
+cd terraform
+terraform init
+terraform plan   # review before applying anything
+terraform apply
+```
+
+Needs `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in your shell
+environment (the same ones in `.env.local` from Phase 11's setup) and
+the `devflow` GHCR package set to public, same as Phase 11.
+
+**If Phase 11's infrastructure already exists when you first run this**:
+either `terraform import` each resource, or tear down the manually-
+created resources first and let `terraform apply` create them fresh -
+this project did the latter (see Phase 12's "what was learned" for why).
 
 ## Running with Docker
 

@@ -1,0 +1,16 @@
+# State lives in S3 (see providers.tf's backend block), never locally or
+# in git - it can contain resource attributes sensitive enough not to
+# want in version control.
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfplan
+tfplan
+
+# Local variable overrides (if anyone ever adds var values that shouldn't
+# be committed) - none exist yet, but this is the conventional pattern.
+*.auto.tfvars
+terraform.tfvars
+
+# .terraform.lock.hcl is NOT ignored - it pins provider versions and
+# should be committed, same reasoning as package-lock.json.
