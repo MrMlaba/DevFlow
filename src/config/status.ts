@@ -84,6 +84,19 @@ export function pullRequestStatusMeta(state: string, isMerged: boolean) {
   return { label: "Open", tone: "success" as const };
 }
 
+export const SECURITY_SEVERITY_META: Record<string, { label: string; tone: BadgeTone }> = {
+  critical: { label: "Critical", tone: "danger" },
+  high: { label: "High", tone: "danger" },
+  medium: { label: "Medium", tone: "warning" },
+  low: { label: "Low", tone: "neutral" },
+};
+
+export const SECURITY_FINDING_STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
+  open: { label: "Open", tone: "danger" },
+  fixed: { label: "Fixed", tone: "success" },
+  dismissed: { label: "Dismissed", tone: "neutral" },
+};
+
 export const HEALTH_STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
   healthy: { label: "Healthy", tone: "success" },
   degraded: { label: "Degraded", tone: "warning" },

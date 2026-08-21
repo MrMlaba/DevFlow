@@ -636,11 +636,96 @@ authorization shape as everything else GitHub-related.
   a preference, and that CI running on a *different*, explicitly-pinned
   Node version is exactly what catches that.
 
-## ⬜ Phase 8 - DevSecOps
+## ✅ Phase 8 - DevSecOps
 
-Semgrep, Gitleaks, Trivy, Dependabot wired into the pipeline. Findings
-surfaced in a DevFlow Security section (vulnerability, severity,
-dependency, file, status, detection time, recommended action).
+**Problem it solves:** Phase 7's `ci.yml` checks that the app *works*
+(lints, type-checks, tests, builds) but says nothing about whether it's
+*safe* - a committed API key, a SQL-injection-shaped pattern, a
+vulnerable npm package, or a CVE in the Docker base image would all pass
+CI cleanly.
+
+**Why DevFlow needs it:** this is the actual subject of Phase 8's spec
+section - three scanners (SAST, secrets, container/dependency
+vulnerabilities) plus Dependabot, with findings visible inside DevFlow
+itself, not just buried in a separate tool's dashboard.
+
+**How it works:**
+
+- **`.github/workflows/security.yml`**, three independent jobs on every
+  push/PR to `main` plus a weekly Monday-morning schedule (a dependency
+  can go from safe to vulnerable without this repo changing at all, once
+  a new CVE is disclosed):
+  - **Gitleaks** - scans the current tree (not full git history) for
+    secrets.
+  - **Semgrep** - SAST using community rulesets (`p/security-audit`,
+    `p/typescript`, `p/react`) - no Semgrep account/token needed, and
+    `--metrics=off` skips even the anonymous usage ping.
+  - **Trivy** - builds the actual Phase 6 `Dockerfile` and scans the
+    resulting image for CRITICAL/HIGH OS and dependency
+    vulnerabilities. This doubles as the first real CI verification that
+    the Dockerfile builds at all - Phase 6 could only check that by hand
+    (Docker isn't installed on the machine this project was built on).
+  - All three upload SARIF to GitHub's code scanning
+    (`github/codeql-action/upload-sarif`), the same system CodeQL uses.
+- **Reporting, not blocking, for now**: every scanner is configured to
+  exit `0` regardless of findings, so a finding doesn't fail the build.
+  Semgrep's community rulesets in particular are known for real false
+  positives on a codebase that's never been scanned before - turning
+  every finding into an instant hard failure on day one, before anything
+  has been triaged, would mean the first run blocks all future pushes.
+  Turning specific categories into a real gate is a natural follow-up
+  once findings have been reviewed.
+- **`.github/dependabot.yml`** - weekly version-update PRs for npm and
+  GitHub Actions dependencies. This is a *different* GitHub feature from
+  "Dependabot alerts" (vulnerable dependency findings); alerts need
+  enabling once, manually, in the repo's Settings (see
+  `docs/development.md`).
+- **The Security page is live** (`src/app/(dashboard)/security/`,
+  new nav item using the `ShieldAlert` icon Phase 0 had already reserved
+  for this): fetches findings straight from two separate GitHub
+  systems - code scanning alerts (Semgrep/Gitleaks/Trivy) and Dependabot
+  alerts - and merges them into one table (finding, project, severity,
+  file/dependency, status, detected time), same "fetch live, don't
+  persist" pattern as Pipelines (Phase 7) and the repo snapshot (Phase
+  4). No new database table.
+
+**How it's configured:** nothing beyond what's already there from Phase
+4 (the GitHub OAuth connection) - plus, once, enabling "Dependabot
+alerts" in the connected repo's Settings -> Code security. Code scanning
+alerts populate themselves the first time `security.yml` runs.
+
+**How it integrates:** `listVisibleSecurityFindings()`
+(`src/services/github.ts`) reuses the exact same
+`getProjectRepository()`/`getGitHubAccount()` lookups every other
+GitHub-backed page already uses - a finding only shows up for a project
+once someone's connected a repo to it, same authorization shape as
+Pipelines and Pull Requests.
+
+**What was learned:**
+
+- GitHub gates these two endpoints on the `security_events` OAuth scope
+  for private repos, but accepts the narrower `public_repo` scope (a
+  strict subset of the already-requested `repo` scope) for public ones -
+  confirmed against GitHub's own REST API docs before writing any code,
+  since guessing wrong here would have meant either a silently-broken
+  feature or asking every connected user to re-consent to a broader
+  scope for no reason. `MrMlaba/DevFlow` is public, so the existing Phase
+  4 connection works without any changes.
+- Verified each tool's exact CLI/action syntax against current docs
+  before writing the workflow, rather than from memory - training data
+  for fast-moving CLI flags (gitleaks' `detect` subcommand was deprecated
+  in favor of `dir`, for one) ages out quickly, and a wrong flag here
+  would have meant another slow push-wait-read-logs CI debug cycle like
+  Phase 7's.
+- A code scanning alert's severity can live in either of two fields -
+  `rule.security_severity_level` (a normalized low/medium/high/critical,
+  when the tool provides one) or the more generic `rule.severity`
+  (none/note/warning/error, always present) - and which one shows up
+  depends on the uploading tool. Handled with an explicit fallback
+  (`codeScanningSeverity()`), unit-tested directly
+  (`tests/unit/services/github-security.test.ts`) rather than assumed,
+  since a silently-wrong severity badge is a security dashboard failing
+  at its one job.
 
 ## ⬜ Phase 9 - Container registry
 

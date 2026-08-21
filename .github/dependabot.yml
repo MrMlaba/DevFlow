@@ -1,0 +1,17 @@
+# Auto-PR "version updates" for outdated dependencies. This is separate
+# from "Dependabot alerts" (vulnerable dependency findings DevFlow's
+# Security page reads from GitHub's API) - alerts need enabling once,
+# manually, at Settings -> Code security -> Dependabot alerts. See
+# docs/development.md.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

@@ -311,6 +311,59 @@ export async function listWorkflowRunJobs(
 }
 
 // ---------------------------------------------------------------------------
+// Security findings (Phase 8) - code scanning (Semgrep/Gitleaks/Trivy SARIF
+// uploads) and Dependabot alerts. Both need the `security_events` OAuth
+// scope for private repos, but `repo` (already requested since Phase 4)
+// covers public repos - see docs/devops-roadmap.md, Phase 8.
+// ---------------------------------------------------------------------------
+
+export interface GitHubCodeScanningAlert {
+  number: number;
+  created_at: string;
+  html_url: string;
+  state: "open" | "dismissed" | "fixed";
+  rule: {
+    id: string;
+    description: string;
+    severity: "none" | "note" | "warning" | "error" | null;
+    security_severity_level: "low" | "medium" | "high" | "critical" | null;
+  };
+  tool: { name: string };
+  most_recent_instance: {
+    location: { path: string } | null;
+  };
+}
+
+export async function listCodeScanningAlerts(token: string, owner: string, repo: string) {
+  return githubFetch<GitHubCodeScanningAlert[]>(
+    `/repos/${owner}/${repo}/code-scanning/alerts?per_page=50`,
+    token,
+  );
+}
+
+export interface GitHubDependabotAlert {
+  number: number;
+  created_at: string;
+  html_url: string;
+  state: "auto_dismissed" | "dismissed" | "fixed" | "open";
+  dependency: { package: { name: string; ecosystem: string } };
+  security_advisory: {
+    summary: string;
+    severity: "low" | "medium" | "high" | "critical";
+  };
+  security_vulnerability: {
+    first_patched_version: { identifier: string } | null;
+  };
+}
+
+export async function listDependabotAlerts(token: string, owner: string, repo: string) {
+  return githubFetch<GitHubDependabotAlert[]>(
+    `/repos/${owner}/${repo}/dependabot/alerts?per_page=50`,
+    token,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Webhooks
 // ---------------------------------------------------------------------------
 

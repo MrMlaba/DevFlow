@@ -1,0 +1,83 @@
+# All three scanners report (exit-code 0 / --exit-code 0) rather than
+# fail the build on a finding. Findings surface in DevFlow's Security page
+# (fetched from GitHub's code scanning alerts, same live-fetch pattern as
+# Pipelines/PRs) and in the repo's own Security tab either way - making
+# every finding an instant CI failure on day one, before anything's been
+# triaged, would mean the very first run (likely full of rule noise on a
+# codebase that's never been scanned before) blocks all future pushes.
+# Turning specific categories into a hard gate is a natural follow-up
+# once findings have been reviewed - see docs/devops-roadmap.md, Phase 8.
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # A dependency can go from safe to vulnerable without this repo
+    # changing at all (a new CVE gets disclosed) - a weekly run catches
+    # that even between pushes.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # Secret scanning. `dir` (not `git`/history scanning) checks the current
+  # tree only - fast, and covers the actual risk (a secret committed and
+  # still present today), not a full-history audit.
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest \
+            dir /repo --report-format sarif --report-path /repo/gitleaks.sarif \
+            --exit-code 0 --redact
+      - if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+
+  # SAST. Community rulesets, no Semgrep account/token needed - --metrics=off
+  # skips even the anonymous usage ping.
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install semgrep
+      - run: |
+          semgrep scan \
+            --config p/security-audit --config p/typescript --config p/react \
+            --sarif-output semgrep.sarif --metrics=off .
+      - if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # Vulnerable dependencies/OS packages, scanned inside the actual image
+  # the Phase 6 Dockerfile produces - this doubles as CI verification that
+  # the image still builds (previously only checked by hand, since Docker
+  # isn't installed on the machine this project was built on - see Phase
+  # 6's notes in docs/devops-roadmap.md).
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t devflow:${{ github.sha }} .
+      - uses: aquasecurity/trivy-action@0.36.0
+        with:
+          image-ref: devflow:${{ github.sha }}
+          format: sarif
+          output: trivy.sarif
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+      - if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
+          category: trivy

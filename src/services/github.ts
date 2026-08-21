@@ -466,3 +466,129 @@ export async function listVisiblePipelineRuns(
     .flat()
     .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
 }
+
+// ---------------------------------------------------------------------------
+// Security findings (Phase 8) - also live/unpersisted (same reasoning as
+// pipeline runs above). Merges GitHub's two separate alert systems -
+// code scanning (Semgrep/Gitleaks/Trivy SARIF uploads, security.yml) and
+// Dependabot alerts (a distinct GitHub feature, not from our workflow) -
+// into one shape the Security page renders without caring which produced
+// a given finding.
+// ---------------------------------------------------------------------------
+
+export type SecurityFindingSeverity = "critical" | "high" | "medium" | "low";
+export type SecurityFindingStatus = "open" | "dismissed" | "fixed";
+
+export interface SecurityFinding {
+  id: string;
+  projectId: string;
+  projectName: string;
+  source: string;
+  title: string;
+  severity: SecurityFindingSeverity;
+  status: SecurityFindingStatus;
+  location: string;
+  detectedAt: string;
+  recommendation: string;
+  htmlUrl: string;
+}
+
+const RULE_SEVERITY_FALLBACK: Record<string, SecurityFindingSeverity> = {
+  error: "high",
+  warning: "medium",
+  note: "low",
+  none: "low",
+};
+
+export function codeScanningSeverity(
+  alert: Pick<gh.GitHubCodeScanningAlert["rule"], "security_severity_level" | "severity">,
+): SecurityFindingSeverity {
+  if (alert.security_severity_level) return alert.security_severity_level;
+  return RULE_SEVERITY_FALLBACK[alert.severity ?? "none"] ?? "low";
+}
+
+export function dependabotStatus(state: gh.GitHubDependabotAlert["state"]): SecurityFindingStatus {
+  return state === "auto_dismissed" ? "dismissed" : state;
+}
+
+async function getSecurityFindings(
+  project: Pick<Project, "id" | "name">,
+  repository: ProjectRepository,
+  token: string,
+): Promise<SecurityFinding[]> {
+  const [codeAlerts, dependabotAlerts] = await Promise.all([
+    gh.listCodeScanningAlerts(token, repository.owner, repository.name).catch(() => []),
+    gh.listDependabotAlerts(token, repository.owner, repository.name).catch(() => []),
+  ]);
+
+  const fromCodeScanning: SecurityFinding[] = codeAlerts.map((alert) => ({
+    id: `code-${alert.number}`,
+    projectId: project.id,
+    projectName: project.name,
+    source: alert.tool.name,
+    title: alert.rule.description,
+    severity: codeScanningSeverity(alert.rule),
+    status: alert.state,
+    location: alert.most_recent_instance.location?.path ?? "—",
+    detectedAt: alert.created_at,
+    recommendation: alert.rule.description,
+    htmlUrl: alert.html_url,
+  }));
+
+  const fromDependabot: SecurityFinding[] = dependabotAlerts.map((alert) => ({
+    id: `dependabot-${alert.number}`,
+    projectId: project.id,
+    projectName: project.name,
+    source: "Dependabot",
+    title: alert.security_advisory.summary,
+    severity: alert.security_advisory.severity,
+    status: dependabotStatus(alert.state),
+    location: alert.dependency.package.name,
+    detectedAt: alert.created_at,
+    recommendation: alert.security_vulnerability.first_patched_version
+      ? `Upgrade ${alert.dependency.package.name} to ${alert.security_vulnerability.first_patched_version.identifier}`
+      : "No patched version available yet.",
+    htmlUrl: alert.html_url,
+  }));
+
+  return [...fromCodeScanning, ...fromDependabot];
+}
+
+/**
+ * Security findings across every project the user belongs to that has a
+ * connected repository - the Security page's data source. Same
+ * skip-rather-than-error handling as listVisiblePipelineRuns: a project
+ * without a connected repo, or a repo where code scanning/Dependabot
+ * alerts aren't enabled, just contributes nothing rather than failing
+ * the whole page.
+ */
+export async function listVisibleSecurityFindings(
+  projects: Pick<Project, "id" | "name">[],
+): Promise<SecurityFinding[]> {
+  const findingsByProject = await Promise.all(
+    projects.map(async (project) => {
+      const repository = await getProjectRepository(project.id);
+      if (!repository) return [];
+
+      const account = await getGitHubAccount(repository.connected_by).catch(() => null);
+      if (!account) return [];
+
+      return getSecurityFindings(project, repository, account.access_token);
+    }),
+  );
+
+  const severityRank: Record<SecurityFindingSeverity, number> = {
+    critical: 0,
+    high: 1,
+    medium: 2,
+    low: 3,
+  };
+
+  return findingsByProject
+    .flat()
+    .sort(
+      (a, b) =>
+        severityRank[a.severity] - severityRank[b.severity] ||
+        new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime(),
+    );
+}

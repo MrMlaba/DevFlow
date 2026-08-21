@@ -111,6 +111,24 @@ same values as your `.env.local`: `NEXT_PUBLIC_SUPABASE_URL`,
 `SEED_USER_PASSWORD`. Without them, that one job fails while the other
 four still pass normally.
 
+## Security scanning
+
+`.github/workflows/security.yml` runs Gitleaks, Semgrep, and Trivy on
+every push/PR to `main` and weekly - no setup needed, none of them use
+secrets or accounts. Findings show up in DevFlow's own Security page,
+which reads them from two GitHub features:
+
+- **Code scanning alerts** (Semgrep/Gitleaks/Trivy) populate themselves
+  automatically the first time `security.yml` runs - nothing to enable.
+- **Dependabot alerts** (vulnerable dependencies) need enabling once, at
+  **Settings -> Code security -> Dependabot alerts** on the GitHub repo.
+  Without it, DevFlow's Security page just won't show any Dependabot
+  findings - it fails open, not with an error.
+
+`.github/dependabot.yml` is a separate, related feature - weekly PRs
+that bump outdated dependencies - and works independently of whether
+alerts are enabled.
+
 ## Running with Docker
 
 Builds and runs the app in a container against your existing cloud
