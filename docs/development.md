@@ -142,6 +142,54 @@ Connect again) to pick up the new scope. Until then, the page's
 "Container images" section just shows its empty-state message rather
 than an error.
 
+## Deployments (Vercel)
+
+`.github/workflows/deploy.yml` deploys to Vercel on every push to
+`main` - Staging (a Preview deployment) automatically, Production only
+after a human approves it in GitHub's UI. One-time setup, none of it
+billed:
+
+1. Create a free Vercel account (vercel.com) and import this repo as a
+   project.
+2. **Disconnect Vercel's own Git integration**: project -> Settings ->
+   Git -> Disconnect. Otherwise Vercel deploys on every push *and* this
+   workflow does too.
+3. Create an access token at vercel.com/account/tokens with **Scope: Full
+   Account** - not scoped to a single project, or CLI commands like
+   `vercel whoami` fail with a `404 User not found` that looks like a bad
+   token but isn't (see Phase 10's notes in `docs/devops-roadmap.md`).
+4. Get your Org ID and Project ID - easiest via `npx vercel link` in the
+   repo root (prompts you to log in, then links the directory); read
+   both out of the `.vercel/project.json` it creates.
+5. Add three repository secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`,
+   `VERCEL_PROJECT_ID`.
+6. Set the app's env vars **on Vercel's dashboard**, not through GitHub
+   Actions - project -> Settings -> Environment Variables:
+   `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL` (set this to
+   whatever domain Vercel assigns your project). Vercel scopes env vars
+   per environment natively, which is simpler than passing them through
+   CI.
+7. Add your Vercel domain to Supabase's redirect allowlist: Supabase
+   dashboard -> Authentication -> URL Configuration -> Redirect URLs ->
+   add `https://*.vercel.app/**`.
+8. **Require a reviewer for Production**: repo Settings -> Environments
+   -> `production` -> Required reviewers -> add yourself. Without this,
+   `deploy-production` runs immediately instead of waiting for approval.
+
+**Known limitation**: the GitHub integration (Connect GitHub) uses an
+OAuth App with one fixed callback URL, currently pointed at `localhost`
+- it won't work on the deployed site unless you register a second OAuth
+App with a production callback URL. Left out of scope rather than
+solved partially.
+
+**Also worth knowing**: Vercel's Deployment Protection (an SSO wall) is
+on by default for every `*.vercel.app` URL, Production included - only a
+connected custom domain is exempt. That means only you (logged into
+Vercel) can open Staging/Production links until you either attach a
+custom domain or turn protection off explicitly in Project Settings ->
+Deployment Protection.
+
 ## Running with Docker
 
 Builds and runs the app in a container against your existing cloud

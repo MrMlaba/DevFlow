@@ -396,6 +396,54 @@ export async function listContainerVersions(token: string, owner: string, packag
 }
 
 // ---------------------------------------------------------------------------
+// Deployments (Phase 10) - populated automatically by deploy.yml's
+// `environment:` job key, not by any manual API call this app makes.
+// ---------------------------------------------------------------------------
+
+export interface GitHubDeployment {
+  id: number;
+  sha: string;
+  ref: string;
+  environment: string;
+  created_at: string;
+  creator: { login: string; avatar_url: string } | null;
+}
+
+export async function listDeployments(token: string, owner: string, repo: string, perPage = 20) {
+  return githubFetch<GitHubDeployment[]>(
+    `/repos/${owner}/${repo}/deployments?per_page=${perPage}`,
+    token,
+  );
+}
+
+export interface GitHubDeploymentStatus {
+  id: number;
+  state:
+    | "error"
+    | "failure"
+    | "inactive"
+    | "in_progress"
+    | "queued"
+    | "pending"
+    | "success"
+    | "waiting";
+  environment_url: string | null;
+  created_at: string;
+}
+
+export async function listDeploymentStatuses(
+  token: string,
+  owner: string,
+  repo: string,
+  deploymentId: number,
+) {
+  return githubFetch<GitHubDeploymentStatus[]>(
+    `/repos/${owner}/${repo}/deployments/${deploymentId}/statuses?per_page=5`,
+    token,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Webhooks
 // ---------------------------------------------------------------------------
 

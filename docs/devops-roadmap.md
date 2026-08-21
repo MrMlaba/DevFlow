@@ -815,10 +815,107 @@ Packages API call is `/users/{owner}/...`, not `/repos/{owner}/{repo}/...`.
   (the pushed tag literally contains the short SHA), and security status
   is already covered by Phase 8's Security page.
 
-## ⬜ Phase 10 - Deployment environments
+## ✅ Phase 10 - Deployment environments
 
-Development/Staging/Production, deployment history, Production approval
-gate.
+**Problem it solves:** Phase 9 gets an image into a registry; nothing
+runs it anywhere real. Every prior phase's "deployment" was `npm run
+dev` on the machine this project was built on.
+
+**Why DevFlow needs it:** this is the first environment a real user
+(not just this project's own CI) could actually visit, and the first
+place a "Production approval gate" - a human decision the deploy
+literally waits on - means anything.
+
+**How it works:**
+
+- **Hosting is Vercel, not AWS** - Phase 11 ("AWS") is explicitly where
+  this project provisions real cloud infrastructure; introducing that
+  now would duplicate that phase's whole purpose. Vercel's free tier
+  gets a real, working deployment today with zero billing, and Phase 11
+  later becomes "migrate Production to AWS," a realistic sequence real
+  teams follow.
+- **Three environments, mapped honestly onto what free-tier Vercel
+  actually offers** - a genuine third hosted tier ("Custom Environments")
+  needs a paid Pro plan, discovered by checking Vercel's docs rather than
+  assuming:
+  - **Development** = this machine, `npm run dev`. Unhosted, exactly as
+    it's been since Phase 0.
+  - **Staging** = a Vercel **Preview** deployment - auto-deploys on
+    every push to `main`, no gate.
+  - **Production** = a Vercel **Production** deployment
+    (`vercel deploy --prod`), gated behind a GitHub Environment with a
+    required reviewer.
+- **`.github/workflows/deploy.yml`**, two jobs on push to `main`:
+  `deploy-staging` (unconditional), then `deploy-production` (`needs:
+  deploy-staging`). Each job's `environment:` key is what makes GitHub
+  create a real, API-readable Deployment record for that push - and,
+  once a required-reviewer rule is added to the `production` environment
+  (Settings -> Environments -> production -> Required reviewers, a
+  one-time manual step), what makes that job actually pause for a human
+  click before running. No custom approval logic in DevFlow's own code -
+  GitHub enforces it natively, same pattern as every GitHub-native
+  feature this project has leaned on since Phase 7.
+- **Environments and Deployments pages are both live now**
+  (`src/app/(dashboard)/environments/`, `.../deployments/`): read
+  straight from GitHub's real Deployments API - same live-fetch pattern
+  as Pipelines/Security/container images. Development renders as a
+  static, unhosted card (there's nothing to fetch for it); Staging and
+  Production show their latest real deployment or an honest "Not
+  deployed yet."
+
+**How it's configured:** a Vercel account, with the project's Git
+integration **disconnected** (Vercel's own auto-deploy-on-push would
+otherwise run in parallel with this workflow's deploys and conflict);
+`VERCEL_TOKEN`/`VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` as GitHub repository
+secrets; the app's env vars set directly on Vercel's dashboard (they
+differ by environment, which is what Vercel's own env var scoping is
+for - not duplicated through GitHub Actions). See
+[`docs/development.md`](./development.md) for the exact steps.
+
+**How it integrates:** `listVisibleDeployments()` reuses the same
+`getProjectRepository()`/`getGitHubAccount()` lookups every other
+GitHub-backed page uses - a deployment only shows up for a project once
+someone's connected a repo to it, unchanged since Phase 4.
+
+**What was learned:**
+
+- **`output: "standalone"` (Phase 6, for the Docker image) broke the
+  very first Vercel build outright** - `next build` itself succeeded,
+  but Vercel's own post-build step failed with `ENOENT
+  .next/next-server.js.nft.json`. Standalone mode restructures the build
+  output specifically for generic self-hosting and doesn't produce the
+  file Vercel's Lambda-bundling pipeline expects; the two are mutually
+  exclusive. Fixed by making `output` conditional on the `VERCEL` env var
+  Vercel sets automatically during its own build, verified locally both
+  ways (`npm run build` still produces `.next/standalone`; `VERCEL=1 npm
+  run build` produces `next-server.js.nft.json` instead) before pushing.
+- **Vercel access tokens can be scoped to a single project**, and a
+  project-scoped token fails account-level operations (`vercel whoami`,
+  `vercel link`) with a confusing `404 User not found` - not an
+  "invalid token" error, which cost real time treating it as a
+  bad-paste problem before the dashboard's own Scope column (comparing
+  a working token's icon against the failing one's) made the actual
+  difference visible. The fix is a token created with Scope: **Full
+  Account**, not a project.
+- **`vercel deploy` only prints a bare deployment URL to stdout in an
+  interactive terminal.** Piped or redirected - which is exactly what
+  both this Bash tool and every GitHub Actions step are - it prints a
+  JSON result object instead, contradicting Vercel's own CLI docs
+  example ("stdout is always the Deployment URL"). Caught by testing the
+  *exact* non-interactive invocation locally before writing it into the
+  workflow; parsed with `node -e` (`.deployment.url`) rather than `jq`,
+  since Node is already a hard requirement in every job here and `jq`
+  turned out not to be installed on this machine to even verify with.
+- **Vercel's Deployment Protection (an SSO wall) applies to `*.vercel.app`
+  URLs by default - including the Production one**, not just Preview
+  deployments - confirmed directly via the Projects API
+  (`ssoProtection.deploymentType: "all_except_custom_domains"`). Only a
+  connected *custom domain* is exempt. Left as Vercel's secure-by-default
+  setting rather than silently disabled - genuinely making Production
+  publicly reachable needs either a custom domain or an explicit,
+  deliberate opt-out in Project Settings, both real decisions for
+  whoever owns the project to make, not something to flip quietly while
+  wiring up a deploy pipeline.
 
 ## ⬜ Phase 11 - AWS
 

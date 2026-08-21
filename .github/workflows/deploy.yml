@@ -1,0 +1,63 @@
+# Deploys to Vercel on every push to main. Two jobs, two GitHub
+# Environments: `staging` deploys automatically (a Vercel Preview
+# deployment - see docs/devops-roadmap.md, Phase 10, for why Preview
+# rather than a paid Custom Environment); `production` deploys for real
+# (`vercel deploy --prod`) but only after a human approves it in GitHub's
+# UI - that approval is configured once, on the repo, at Settings ->
+# Environments -> production -> Required reviewers. Referencing an
+# `environment:` on a job is what makes GitHub record a real Deployment
+# (visible via the repo's Environments UI and the Deployments API) and
+# what makes the required-reviewer rule actually pause the job.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install -g vercel@59.3.0
+      # `vercel deploy` only prints a bare URL to stdout in an interactive
+      # TTY - non-interactively (here, same as this Bash tool locally) it
+      # prints a JSON result object instead. Verified locally against the
+      # real project before writing this, since trusting Vercel's own
+      # docs example ("stdout is always the Deployment URL") without
+      # checking would have written the whole JSON blob into
+      # environment.url below.
+      - id: deploy
+        run: |
+          OUTPUT=$(vercel deploy --yes)
+          URL=$(node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).deployment.url)" <<< "$OUTPUT")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  deploy-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install -g vercel@59.3.0
+      - id: deploy
+        run: |
+          OUTPUT=$(vercel deploy --prod --yes)
+          URL=$(node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).deployment.url)" <<< "$OUTPUT")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

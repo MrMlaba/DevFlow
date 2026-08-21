@@ -43,8 +43,8 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { title: "Pipelines", href: "/pipelines", icon: Workflow, live: true },
   { title: "Security", href: "/security", icon: ShieldAlert, live: true },
-  { title: "Deployments", href: "/deployments", icon: Rocket, live: false },
-  { title: "Environments", href: "/environments", icon: Boxes, live: false },
+  { title: "Deployments", href: "/deployments", icon: Rocket, live: true },
+  { title: "Environments", href: "/environments", icon: Boxes, live: true },
   { title: "Monitoring", href: "/monitoring", icon: LineChart, live: false },
   {
     title: "Incidents",

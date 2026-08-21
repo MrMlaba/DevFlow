@@ -657,3 +657,98 @@ export async function listVisibleContainerImages(
     .flat()
     .sort((a, b) => new Date(b.pushedAt).getTime() - new Date(a.pushedAt).getTime());
 }
+
+// ---------------------------------------------------------------------------
+// Deployments (Phase 10) - also live/unpersisted. deploy.yml's `environment:`
+// job key is what creates these on GitHub's side; DevFlow only ever reads
+// them, same as it only ever reads the CI runs a workflow produces.
+// ---------------------------------------------------------------------------
+
+export type DeploymentStatusSummary = "success" | "failed" | "pending" | "superseded";
+
+export interface DeploymentRecord {
+  id: number;
+  projectId: string;
+  projectName: string;
+  environment: string;
+  commitSha: string;
+  status: DeploymentStatusSummary;
+  environmentUrl: string | null;
+  deployedBy: string;
+  createdAt: string;
+}
+
+export function deploymentStatusSummary(
+  state: gh.GitHubDeploymentStatus["state"],
+): DeploymentStatusSummary {
+  switch (state) {
+    case "success":
+      return "success";
+    case "error":
+    case "failure":
+      return "failed";
+    case "inactive":
+      return "superseded";
+    default:
+      return "pending";
+  }
+}
+
+async function getDeployments(
+  project: Pick<Project, "id" | "name">,
+  repository: ProjectRepository,
+  token: string,
+  limit = 10,
+): Promise<DeploymentRecord[]> {
+  const deployments = await gh
+    .listDeployments(token, repository.owner, repository.name, limit)
+    .catch(() => []);
+
+  return Promise.all(
+    deployments.map(async (deployment) => {
+      const statuses = await gh
+        .listDeploymentStatuses(token, repository.owner, repository.name, deployment.id)
+        .catch(() => []);
+      const latest = [...statuses].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )[0];
+
+      return {
+        id: deployment.id,
+        projectId: project.id,
+        projectName: project.name,
+        environment: deployment.environment,
+        commitSha: deployment.sha.slice(0, 7),
+        status: deploymentStatusSummary(latest?.state ?? "pending"),
+        environmentUrl: latest?.environment_url ?? null,
+        deployedBy: deployment.creator?.login ?? "Unknown",
+        createdAt: deployment.created_at,
+      } satisfies DeploymentRecord;
+    }),
+  );
+}
+
+/**
+ * Deployment history across every project the user belongs to that has a
+ * connected repository. Same skip-rather-than-error handling as pipeline
+ * runs/security findings/container images above.
+ */
+export async function listVisibleDeployments(
+  projects: Pick<Project, "id" | "name">[],
+): Promise<DeploymentRecord[]> {
+  const deploymentsByProject = await Promise.all(
+    projects.map(async (project) => {
+      const repository = await getProjectRepository(project.id);
+      if (!repository) return [];
+
+      const account = await getGitHubAccount(repository.connected_by).catch(() => null);
+      if (!account) return [];
+
+      return getDeployments(project, repository, account.access_token);
+    }),
+  );
+
+  return deploymentsByProject
+    .flat()
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}

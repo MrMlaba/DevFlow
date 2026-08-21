@@ -13,5 +13,11 @@ the file. `../dependabot.yml` handles version-update PRs separately.
 on push to `main` and on version tags (`v*.*.*`) - no secrets needed,
 GHCR auth is the workflow's own `GITHUB_TOKEN`. Never runs on PRs; those
 already get the Dockerfile validated (built, not pushed) by
-`security.yml`'s `trivy` job. See
+`security.yml`'s `trivy` job.
+
+`deploy.yml` (Phase 10): deploys to Vercel on push to `main` - Staging
+(Preview) automatically, Production only after a human approves it via
+the `production` GitHub Environment's required-reviewer rule. Needs 3
+repository secrets (`VERCEL_TOKEN`, `VERCEL_ORG_ID`,
+`VERCEL_PROJECT_ID`) - see `docs/development.md` for full setup. See
 [`docs/devops-roadmap.md`](../../docs/devops-roadmap.md).

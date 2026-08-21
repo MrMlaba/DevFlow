@@ -57,11 +57,10 @@ export const PIPELINE_STATUS_META: Record<string, { label: string; tone: BadgeTo
 };
 
 export const DEPLOYMENT_STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
-  queued: { label: "Queued", tone: "neutral" },
-  deploying: { label: "Deploying", tone: "info" },
-  successful: { label: "Successful", tone: "success" },
+  pending: { label: "Pending", tone: "info" },
+  success: { label: "Success", tone: "success" },
   failed: { label: "Failed", tone: "danger" },
-  rolled_back: { label: "Rolled Back", tone: "warning" },
+  superseded: { label: "Superseded", tone: "neutral" },
 };
 
 export const INCIDENT_STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
@@ -95,10 +94,4 @@ export const SECURITY_FINDING_STATUS_META: Record<string, { label: string; tone:
   open: { label: "Open", tone: "danger" },
   fixed: { label: "Fixed", tone: "success" },
   dismissed: { label: "Dismissed", tone: "neutral" },
-};
-
-export const HEALTH_STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
-  healthy: { label: "Healthy", tone: "success" },
-  degraded: { label: "Degraded", tone: "warning" },
-  down: { label: "Down", tone: "danger" },
 };
