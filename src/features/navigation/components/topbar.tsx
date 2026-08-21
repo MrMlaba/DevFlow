@@ -3,6 +3,7 @@ import { Bell } from "lucide-react";
 
 import { MobileNav } from "@/features/navigation/components/mobile-nav";
 import { UserMenu } from "@/features/auth/components/user-menu";
+import { ModeToggle } from "@/components/mode-toggle";
 import { Button } from "@/components/ui/button";
 import type { Profile } from "@/services/auth";
 
@@ -11,6 +12,7 @@ export function Topbar({ profile }: { profile: Profile }) {
     <header className="flex h-16 items-center justify-between gap-4 border-b bg-card px-4 md:px-6">
       <MobileNav />
       <div className="flex-1" />
+      <ModeToggle />
       <Button
         variant="ghost"
         size="icon"
