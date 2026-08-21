@@ -53,7 +53,14 @@ export function buildAuthorizeUrl(input: {
   const url = new URL("https://github.com/login/oauth/authorize");
   url.searchParams.set("client_id", input.clientId);
   url.searchParams.set("redirect_uri", input.redirectUri);
-  url.searchParams.set("scope", "repo read:user");
+  // read:packages (Phase 9): lists pushed container image versions for the
+  // Pipelines page. Added after repo/read:user (Phase 4) - accounts
+  // connected before this change won't have it until they reconnect
+  // (Settings -> GitHub -> Disconnect, then Connect again); code handling
+  // the packages list treats a 403 the same as "nothing to show" rather
+  // than erroring, so an old connection just shows no image data instead
+  // of breaking the page.
+  url.searchParams.set("scope", "repo read:user read:packages");
   url.searchParams.set("state", input.state);
   return url.toString();
 }
@@ -359,6 +366,31 @@ export interface GitHubDependabotAlert {
 export async function listDependabotAlerts(token: string, owner: string, repo: string) {
   return githubFetch<GitHubDependabotAlert[]>(
     `/repos/${owner}/${repo}/dependabot/alerts?per_page=50`,
+    token,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Container registry (Phase 9) - GitHub Packages API. Needs the
+// read:packages OAuth scope specifically; unlike code scanning/Dependabot
+// alerts (Phase 8), GitHub does NOT accept the broader `repo`/`public_repo`
+// scope as a substitute here, even for public packages.
+// ---------------------------------------------------------------------------
+
+export interface GitHubPackageVersion {
+  id: number;
+  name: string;
+  html_url: string;
+  created_at: string;
+  metadata: { container: { tags: string[] } };
+}
+
+/** `owner` is the GitHub *user* that owns the package - GHCR packages are
+ * user/org-scoped, not repo-scoped, even though docker.yml names the image
+ * after the repo (`ghcr.io/${{ github.repository }}`). */
+export async function listContainerVersions(token: string, owner: string, packageName: string) {
+  return githubFetch<GitHubPackageVersion[]>(
+    `/users/${owner}/packages/container/${encodeURIComponent(packageName)}/versions?per_page=20`,
     token,
   );
 }

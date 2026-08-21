@@ -592,3 +592,68 @@ export async function listVisibleSecurityFindings(
         new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime(),
     );
 }
+
+// ---------------------------------------------------------------------------
+// Container images (Phase 9) - also live/unpersisted, same reasoning as
+// pipeline runs and security findings above.
+// ---------------------------------------------------------------------------
+
+export interface ContainerImage {
+  id: number;
+  projectId: string;
+  projectName: string;
+  tags: string[];
+  htmlUrl: string;
+  pushedAt: string;
+}
+
+async function getContainerImages(
+  project: Pick<Project, "id" | "name">,
+  repository: ProjectRepository,
+  token: string,
+  limit = 5,
+): Promise<ContainerImage[]> {
+  // docker.yml pushes to ghcr.io/${{ github.repository }}, which
+  // docker/metadata-action lowercases - GHCR package names are always
+  // lowercase even though the repo name (and repository.name here) isn't.
+  const versions = await gh
+    .listContainerVersions(token, repository.owner, repository.name.toLowerCase())
+    .catch(() => []);
+
+  return versions.slice(0, limit).map((version) => ({
+    id: version.id,
+    projectId: project.id,
+    projectName: project.name,
+    tags: version.metadata.container.tags,
+    htmlUrl: version.html_url,
+    pushedAt: version.created_at,
+  }));
+}
+
+/**
+ * Pushed container image versions across every project the user belongs
+ * to that has a connected repository. Same skip-rather-than-error
+ * handling as the pipeline runs/security findings above - most commonly
+ * skipped because the connected account doesn't have the read:packages
+ * scope yet (added in Phase 9, after the original Phase 4 connection) -
+ * see buildAuthorizeUrl in lib/github.ts.
+ */
+export async function listVisibleContainerImages(
+  projects: Pick<Project, "id" | "name">[],
+): Promise<ContainerImage[]> {
+  const imagesByProject = await Promise.all(
+    projects.map(async (project) => {
+      const repository = await getProjectRepository(project.id);
+      if (!repository) return [];
+
+      const account = await getGitHubAccount(repository.connected_by).catch(() => null);
+      if (!account) return [];
+
+      return getContainerImages(project, repository, account.access_token);
+    }),
+  );
+
+  return imagesByProject
+    .flat()
+    .sort((a, b) => new Date(b.pushedAt).getTime() - new Date(a.pushedAt).getTime());
+}

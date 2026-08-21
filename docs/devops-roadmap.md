@@ -726,12 +726,94 @@ Pipelines and Pull Requests.
   (`tests/unit/services/github-security.test.ts`) rather than assumed,
   since a silently-wrong severity badge is a security dashboard failing
   at its one job.
+- Two more real bugs, caught only once this actually ran on GitHub:
+  `aquasecurity/trivy-action@0.36.0` failed instantly ("Set up job")
+  because the real git tag is `v0.36.0` - GitHub Actions doesn't fall
+  back to a nearby tag, it just fails to resolve the reference. And the
+  `trivy` job's own `docker build` step failed with `"/app/public": not
+  found` - `public/` had been empty since Phase 0's scaffold, and **git
+  doesn't track empty directories at all**, so it existed on the local
+  disk this project was built on but was never actually in the repo;
+  `actions/checkout` on a fresh CI runner never had it. Fixed with a
+  `public/.gitkeep`, verified by exporting the commit tree with
+  `git archive` (which reproduces exactly what a checkout produces)
+  before pushing again, rather than trusting the working directory.
 
-## ⬜ Phase 9 - Container registry
+## ✅ Phase 9 - Container registry
 
-Images tagged by commit SHA/branch/semver, pushed to GitHub Container
-Registry (later AWS ECR). Image/tag/commit/size/security status visible
-in DevFlow.
+**Problem it solves:** Phase 6 built a `Dockerfile`; Phase 8's `trivy`
+job proved it actually builds in CI. Neither produces anything anyone
+else can run - the image only ever existed inside that one job, then got
+thrown away.
+
+**Why DevFlow needs it:** a pushed, tagged image is the actual
+deployable artifact Phase 10+ (deployment environments, AWS, Kubernetes)
+need to reference - "deploy commit `abc123`" only means something once
+there's a real image tagged `abc123` sitting in a registry.
+
+**How it works:**
+
+- **`.github/workflows/docker.yml`** builds the same Phase 6 `Dockerfile`
+  and pushes to **GitHub Container Registry** (`ghcr.io`), not Docker
+  Hub - authentication is the workflow's own built-in `GITHUB_TOKEN`
+  (`packages: write` permission), not a new secret to configure, unlike
+  Phase 7's `e2e` job. Only runs on push to `main` and on version tags
+  (`v*.*.*`) - never on PRs, since an image built from an unreviewed
+  branch has no business in a shared registry; PRs already get their
+  Dockerfile validated by Phase 8's `trivy` job, which builds the image
+  too but never pushes it.
+- **Tagging** via `docker/metadata-action`: `sha-<short-sha>` on every
+  push, `latest` only on `main`, and the semver tag itself
+  (`v1.2.3` -> tag `1.2.3`) when the trigger was a version tag. Image
+  name (`ghcr.io/${{ github.repository }}`) is lowercased automatically -
+  necessary since `MrMlaba/DevFlow` has uppercase characters Docker image
+  refs can't.
+- **The Pipelines page now shows published images** too (a new
+  "Container images" section below the existing CI runs list - the same
+  page, not a new nav item, since an image is downstream of a CI run and
+  the two belong in one "delivery" story): tags, which project, and when
+  pushed, each linking out to its GHCR page. Same live-fetch pattern as
+  everything else GitHub-backed.
+
+**How it's configured:** nothing new for the workflow itself (GHCR auth
+is automatic). The read path needed a **new OAuth scope**,
+`read:packages` - added to `buildAuthorizeUrl()`
+(`src/lib/github.ts`) alongside the Phase 4 `repo read:user` scopes.
+Unlike Phase 8's code scanning/Dependabot endpoints, GitHub does **not**
+accept `repo`/`public_repo` as a substitute for `read:packages`, even for
+public packages - confirmed against GitHub's REST API docs before
+building anything, specifically to avoid finding out the hard way that
+an existing connection couldn't see image data. Accounts connected
+before this phase (i.e. everyone, so far) need to reconnect GitHub
+(Settings) once to pick up the new scope; until then, the "Container
+images" section just shows its empty-state message rather than erroring
+- the same fails-open handling `list*` functions in `services/github.ts`
+already use everywhere for a missing scope/permission.
+
+**How it integrates:** `listVisibleContainerImages()` reuses the same
+`getProjectRepository()`/`getGitHubAccount()` lookups every other
+GitHub-backed page uses. GHCR packages are user/org-scoped, not
+repo-scoped, even though the image is *named* after the repo - the
+Packages API call is `/users/{owner}/...`, not `/repos/{owner}/{repo}/...`.
+
+**What was learned:**
+
+- Verified `docker/login-action`, `docker/metadata-action`, and
+  `docker/build-push-action`'s exact current version tags against their
+  real git tags (`v4`, `v6`, `v7`) before writing the workflow - directly
+  motivated by Phase 8's `trivy-action@0.36.0` (missing the `v`) failing
+  instantly in CI. Worth establishing as a standing habit for every new
+  third-party Action, not just the one that already burned time.
+- GitHub Packages' version-listing response doesn't include image size
+  or digest at all (confirmed against the API docs, not assumed) -
+  getting real size data would mean calling the registry's own Docker
+  Registry HTTP API v2 directly (a different, manifest-based protocol,
+  not a REST endpoint), which is real added complexity for one column.
+  Left out rather than faked or estimated - the roadmap's original
+  "image/tag/commit/size/security status" list assumed a field that
+  turned out not to be free to get; commit and tag both still show
+  (the pushed tag literally contains the short SHA), and security status
+  is already covered by Phase 8's Security page.
 
 ## ⬜ Phase 10 - Deployment environments
 

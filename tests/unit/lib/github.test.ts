@@ -53,6 +53,6 @@ describe("buildAuthorizeUrl", () => {
       "http://localhost:3000/api/github/oauth/callback",
     );
     expect(parsed.searchParams.get("state")).toBe("random-state-value");
-    expect(parsed.searchParams.get("scope")).toBe("repo read:user");
+    expect(parsed.searchParams.get("scope")).toBe("repo read:user read:packages");
   });
 });

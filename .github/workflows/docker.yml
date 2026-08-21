@@ -1,0 +1,44 @@
+# Publishes to GitHub Container Registry - not Docker Hub, so
+# authentication is the built-in GITHUB_TOKEN (packages: write below),
+# not a new secret to set up. Only runs for pushes that should actually
+# produce a shareable image (main, and version tags) - PRs already get
+# their Dockerfile validated by security.yml's trivy job, which builds
+# the image too but never pushes it anywhere.
+name: Docker
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

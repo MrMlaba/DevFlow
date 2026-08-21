@@ -9,5 +9,9 @@ to `main` and weekly. Reports findings (uploaded as SARIF to GitHub code
 scanning) rather than failing the build - see the comment at the top of
 the file. `../dependabot.yml` handles version-update PRs separately.
 
-`docker.yml` (Phase 9) lands in its own phase. See
+`docker.yml` (Phase 9): builds and pushes to GitHub Container Registry
+on push to `main` and on version tags (`v*.*.*`) - no secrets needed,
+GHCR auth is the workflow's own `GITHUB_TOKEN`. Never runs on PRs; those
+already get the Dockerfile validated (built, not pushed) by
+`security.yml`'s `trivy` job. See
 [`docs/devops-roadmap.md`](../../docs/devops-roadmap.md).

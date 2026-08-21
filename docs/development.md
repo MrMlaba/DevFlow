@@ -129,6 +129,19 @@ which reads them from two GitHub features:
 that bump outdated dependencies - and works independently of whether
 alerts are enabled.
 
+## Container registry
+
+`.github/workflows/docker.yml` builds and pushes an image to GitHub
+Container Registry on every push to `main` and on version tags - no
+setup needed, GHCR auth is the workflow's own built-in token.
+
+Seeing pushed images on the Pipelines page needs the `read:packages`
+OAuth scope, added in Phase 9 - if you connected GitHub before this
+phase, **reconnect it once** (Settings -> GitHub -> Disconnect, then
+Connect again) to pick up the new scope. Until then, the page's
+"Container images" section just shows its empty-state message rather
+than an error.
+
 ## Running with Docker
 
 Builds and runs the app in a container against your existing cloud
