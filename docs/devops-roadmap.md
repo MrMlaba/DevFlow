@@ -897,15 +897,21 @@ someone's connected a repo to it, unchanged since Phase 4.
   a working token's icon against the failing one's) made the actual
   difference visible. The fix is a token created with Scope: **Full
   Account**, not a project.
-- **`vercel deploy` only prints a bare deployment URL to stdout in an
-  interactive terminal.** Piped or redirected - which is exactly what
-  both this Bash tool and every GitHub Actions step are - it prints a
-  JSON result object instead, contradicting Vercel's own CLI docs
-  example ("stdout is always the Deployment URL"). Caught by testing the
-  *exact* non-interactive invocation locally before writing it into the
-  workflow; parsed with `node -e` (`.deployment.url`) rather than `jq`,
-  since Node is already a hard requirement in every job here and `jq`
-  turned out not to be installed on this machine to even verify with.
+- **`vercel deploy`'s stdout shape isn't just an interactive-vs-piped
+  question - it's platform-dependent too, which "verified locally"
+  didn't actually catch.** The exact same non-interactive invocation
+  (`vercel deploy --yes`, output captured via command substitution)
+  printed a JSON result object when tested on this Windows machine, but
+  a bare URL on GitHub's real Linux runner - matching Vercel's own CLI
+  docs example ("stdout is always the Deployment URL") there, but not
+  here. The first real CI run crashed trying to `JSON.parse()` a plain
+  URL string. Fixed by not assuming either shape: check whether the
+  output starts with `{` before attempting to parse it, falling back to
+  the raw string otherwise. The deeper lesson isn't about Vercel
+  specifically - it's that "I tested this exact command locally" is only
+  as strong as how close "locally" is to where it'll actually run;
+  Windows Git Bash was close enough to catch some things (Phase 6-9's
+  local verifications all held up) but not this one.
 - **Vercel's Deployment Protection (an SSO wall) applies to `*.vercel.app`
   URLs by default - including the Production one**, not just Preview
   deployments - confirmed directly via the Projects API

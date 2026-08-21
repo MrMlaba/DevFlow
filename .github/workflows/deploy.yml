@@ -26,17 +26,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: npm install -g vercel@59.3.0
-      # `vercel deploy` only prints a bare URL to stdout in an interactive
-      # TTY - non-interactively (here, same as this Bash tool locally) it
-      # prints a JSON result object instead. Verified locally against the
-      # real project before writing this, since trusting Vercel's own
-      # docs example ("stdout is always the Deployment URL") without
-      # checking would have written the whole JSON blob into
-      # environment.url below.
+      # `vercel deploy`'s stdout shape isn't consistent across platforms:
+      # it printed a bare URL on GitHub's Linux runner (matching Vercel's
+      # own docs) but a JSON result object when the exact same
+      # non-interactive invocation was tested on Windows first - so
+      # "verified locally" turned out not to be a reliable stand-in for
+      # "verified on the actual CI platform." Handles both rather than
+      # assume either: JSON only if the output actually starts with `{`.
       - id: deploy
         run: |
           OUTPUT=$(vercel deploy --yes)
-          URL=$(node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).deployment.url)" <<< "$OUTPUT")
+          if [[ "$OUTPUT" == "{"* ]]; then
+            URL=$(node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).deployment.url)" <<< "$OUTPUT")
+          else
+            URL="$OUTPUT"
+          fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -55,7 +59,11 @@ jobs:
       - id: deploy
         run: |
           OUTPUT=$(vercel deploy --prod --yes)
-          URL=$(node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).deployment.url)" <<< "$OUTPUT")
+          if [[ "$OUTPUT" == "{"* ]]; then
+            URL=$(node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).deployment.url)" <<< "$OUTPUT")
+          else
+            URL="$OUTPUT"
+          fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
