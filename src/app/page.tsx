@@ -68,10 +68,12 @@ export default async function Home() {
           DevFlow
         </span>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" render={<Link href="/login" />}>
+          <Button variant="ghost" nativeButton={false} render={<Link href="/login" />}>
             Sign in
           </Button>
-          <Button render={<Link href="/register" />}>Get started</Button>
+          <Button nativeButton={false} render={<Link href="/register" />}>
+            Get started
+          </Button>
         </div>
       </header>
 
@@ -86,11 +88,16 @@ export default async function Home() {
             DevOps learning project, phase by phase.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <Button size="lg" render={<Link href="/register" />}>
+            <Button size="lg" nativeButton={false} render={<Link href="/register" />}>
               Create your account
               <ArrowRight />
             </Button>
-            <Button size="lg" variant="outline" render={<Link href="/login" />}>
+            <Button
+              size="lg"
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/login" />}
+            >
               Sign in
             </Button>
           </div>

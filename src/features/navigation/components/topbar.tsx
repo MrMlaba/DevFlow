@@ -15,6 +15,7 @@ export function Topbar({ profile }: { profile: Profile }) {
         variant="ghost"
         size="icon"
         aria-label="Notifications"
+        nativeButton={false}
         render={<Link href="/notifications" />}
       >
         <Bell className="size-4.5" />

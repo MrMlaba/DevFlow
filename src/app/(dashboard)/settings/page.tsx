@@ -40,7 +40,11 @@ export default async function SettingsPage() {
                 devflow.app/{active.organization.slug}
               </p>
             </div>
-            <Button variant="outline" render={<Link href="/settings/organization" />}>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/settings/organization" />}
+            >
               Manage
             </Button>
           </CardContent>

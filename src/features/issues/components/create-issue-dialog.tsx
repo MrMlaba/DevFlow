@@ -34,9 +34,11 @@ import type { IssuePriority } from "@/types/database";
 export function CreateIssueDialog({
   projectId,
   members,
+  tasks,
 }: {
   projectId: string;
   members: AssigneeOption[];
+  tasks: AssigneeOption[];
 }) {
   const [open, setOpen] = useState(false);
   const [state, formAction] = useActionState(async (prev: FormState, formData: FormData) => {
@@ -100,6 +102,14 @@ export function CreateIssueDialog({
               <Label htmlFor="issue-assignee">Assignee</Label>
               <AssigneeSelect name="assigneeId" options={members} />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="issue-task">Link to task</Label>
+            <AssigneeSelect
+              name="linkedTaskId"
+              options={tasks}
+              label="No linked task"
+            />
           </div>
           {state.status === "error" && (
             <p className="text-destructive text-sm">{state.message}</p>

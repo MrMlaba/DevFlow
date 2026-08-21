@@ -42,6 +42,19 @@ export async function listVisibleIssues() {
   })[];
 }
 
+/** Issues linked to a task (issues.linked_task_id -> tasks.id), for the task detail view. */
+export async function listIssuesLinkedToTask(taskId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("issues")
+    .select(ISSUE_SELECT)
+    .eq("linked_task_id", taskId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as unknown as Issue[];
+}
+
 export async function getIssue(issueId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -60,6 +73,7 @@ export async function createIssue(input: {
   description?: string;
   priority: Tables<"issues">["priority"];
   assigneeId?: string;
+  linkedTaskId?: string;
   reporterId: string;
 }) {
   const supabase = await createClient();
@@ -71,6 +85,7 @@ export async function createIssue(input: {
       description: input.description || null,
       priority: input.priority,
       assignee_id: input.assigneeId || null,
+      linked_task_id: input.linkedTaskId || null,
       reporter_id: input.reporterId,
     })
     .select()
@@ -176,6 +191,33 @@ export async function updateIssueStatus(input: {
       closed && !wasClosed
         ? `closed issue "${input.title}"`
         : `moved issue "${input.title}" to ${input.status.replace("_", " ")}`,
+  });
+}
+
+export async function updateIssueLinkedTask(input: {
+  project: Project;
+  issueId: string;
+  title: string;
+  linkedTaskId: string | null;
+  actorId: string;
+}) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("issues")
+    .update({ linked_task_id: input.linkedTaskId })
+    .eq("id", input.issueId);
+  if (error) throw error;
+
+  await logActivity({
+    projectId: input.project.id,
+    organizationId: input.project.organization_id,
+    actorId: input.actorId,
+    eventType: "issue.updated",
+    objectType: "issue",
+    objectId: input.issueId,
+    description: input.linkedTaskId
+      ? `linked issue "${input.title}" to a task`
+      : `unlinked issue "${input.title}" from its task`,
   });
 }
 

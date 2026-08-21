@@ -3,6 +3,7 @@ import { CheckCircle2, ListTodo, TicketX, Users2 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { ActivityFeed } from "@/features/activity/components/activity-feed";
 import { getProjectById, getProjectStats } from "@/services/projects";
 import { listActivity } from "@/services/activity";
@@ -32,18 +33,32 @@ export default async function ProjectOverviewPage({
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="space-y-6 lg:col-span-2">
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Project progress</CardTitle>
+            <span className="text-2xl font-semibold">{progress}%</span>
+          </CardHeader>
+          <CardContent>
+            <Progress value={progress} />
+            <p className="text-muted-foreground mt-2 text-xs">
+              {stats.tasksCompleted} of {stats.tasksTotal} task
+              {stats.tasksTotal === 1 ? "" : "s"} completed
+            </p>
+          </CardContent>
+        </Card>
+
         <div className="grid gap-4 sm:grid-cols-2">
           <StatCard
-            icon={ListTodo}
-            label="Tasks"
-            value={`${stats.tasksCompleted} / ${stats.tasksTotal}`}
-            hint="completed"
+            icon={CheckCircle2}
+            label="Tasks completed"
+            value={String(stats.tasksCompleted)}
+            hint={`of ${stats.tasksTotal} total`}
           />
           <StatCard
-            icon={CheckCircle2}
-            label="Progress"
-            value={`${progress}%`}
-            hint="of tasks done"
+            icon={ListTodo}
+            label="Tasks remaining"
+            value={String(Math.max(stats.tasksTotal - stats.tasksCompleted, 0))}
+            hint="still in progress"
           />
           <StatCard
             icon={TicketX}

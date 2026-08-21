@@ -94,14 +94,23 @@ are built on **`@base-ui/react`**, not Radix UI. If you're used to Radix's
 </Button>
 
 // Base UI's render prop - use this instead
-<Button render={<Link href="/projects" />}>
+<Button nativeButton={false} render={<Link href="/projects" />}>
   Projects
 </Button>
 ```
 
 The element passed to `render` receives the component's props/behavior;
 children of the *outer* component (`Button`, `DialogTrigger`,
-`DropdownMenuItem`, ...) become what's actually rendered inside it. Also
+`DropdownMenuItem`, ...) become what's actually rendered inside it.
+
+`Button` and `DialogTrigger`/`SheetTrigger` default to `nativeButton={true}`
+- they expect their rendered DOM node to actually be a `<button>`, and log a
+console error if it isn't. That's fine when `render` points at something
+that itself renders a `<button>` (like our own `Button` component, e.g.
+`<DialogTrigger render={<Button />}>`), but when `render` points at a
+`<Link>` or `<a>`, pass `nativeButton={false}` explicitly so Base UI adds
+the right ARIA role/keyboard handling instead of expecting native button
+semantics. Also
 note `DropdownMenuItem` uses `onClick`, not Radix's `onSelect`, and
 `Select`'s `onValueChange` receives `string | null` (guard against `null`
 before using the value).

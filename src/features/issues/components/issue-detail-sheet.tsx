@@ -12,18 +12,22 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { CommentThread } from "@/features/comments/components/comment-thread";
 import { IssueStatusSelect } from "@/features/issues/components/issue-status-select";
+import { LinkedTaskSelect } from "@/features/issues/components/linked-task-select";
 import { ISSUE_PRIORITY_META } from "@/config/status";
 import { initials, formatRelativeTime } from "@/lib/utils";
+import type { AssigneeOption } from "@/components/assignee-select";
 import type { Issue } from "@/services/issues";
 
 export function IssueDetailSheet({
   issue,
   projectId,
+  tasks,
   open,
   onOpenChange,
 }: {
   issue: Issue | null;
   projectId: string;
+  tasks: AssigneeOption[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -65,6 +69,15 @@ export function IssueDetailSheet({
             ) : (
               <p className="mt-1 text-muted-foreground text-sm">Unassigned</p>
             )}
+          </div>
+
+          <div>
+            <p className="text-muted-foreground mb-1 text-xs">Linked task</p>
+            <LinkedTaskSelect
+              issueId={issue.id}
+              tasks={tasks}
+              currentTaskId={issue.linked_task_id}
+            />
           </div>
 
           <Separator />

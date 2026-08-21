@@ -12,8 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { CommentThread } from "@/features/comments/components/comment-thread";
 import { TaskStatusSelect } from "@/features/tasks/components/task-status-select";
+import { TaskAttachments } from "@/features/attachments/components/task-attachments";
+import { LinkedIssues } from "@/features/issues/components/linked-issues";
 import { TASK_PRIORITY_META } from "@/config/status";
 import { initials, formatRelativeTime } from "@/lib/utils";
+import { GitPullRequest } from "lucide-react";
 import type { Task } from "@/services/tasks";
 
 export function TaskDetailSheet({
@@ -82,6 +85,20 @@ export function TaskDetailSheet({
                   : "No due date"}
               </p>
             </div>
+          </div>
+
+          <Separator />
+
+          <LinkedIssues taskId={task.id} projectId={projectId} />
+
+          <TaskAttachments taskId={task.id} />
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">Pull requests</h3>
+            <p className="text-muted-foreground flex items-center gap-1.5 text-sm">
+              <GitPullRequest className="size-3.5" />
+              Connects once GitHub integration (Phase 4) is set up.
+            </p>
           </div>
 
           <Separator />

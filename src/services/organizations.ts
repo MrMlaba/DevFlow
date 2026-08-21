@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import type { AppRole, Tables } from "@/types/database";
 import { logActivity } from "@/services/activity";
+import { getCurrentUser } from "@/services/auth";
 
 export type Organization = Tables<"organizations">;
 export type OrganizationMember = Tables<"organization_members"> & {
@@ -11,9 +12,18 @@ export type OrganizationMember = Tables<"organization_members"> & {
 
 export async function listUserOrganizations() {
   const supabase = await createClient();
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  // Filter by user_id explicitly rather than relying on RLS to scope this
+  // to "my membership rows": is_org_member(organization_id) only checks
+  // whether the current user belongs to that organization, not whether a
+  // given row is theirs - so an unfiltered select returns every member's
+  // row for every org you're in, not just your own.
   const { data, error } = await supabase
     .from("organization_members")
     .select("role, organization:organizations(*)")
+    .eq("user_id", user.id)
     .order("joined_at", { ascending: true });
 
   if (error) throw error;
@@ -78,7 +88,9 @@ export async function listOrganizationMembers(organizationId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("organization_members")
-    .select("*, profile:profiles(id, full_name, email, avatar_url)")
+    .select(
+      "*, profile:profiles!organization_members_user_id_fkey(id, full_name, email, avatar_url)",
+    )
     .eq("organization_id", organizationId)
     .order("joined_at", { ascending: true });
 

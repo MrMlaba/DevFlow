@@ -43,6 +43,7 @@ erDiagram
 | `issues`                     | Bugs/defects. Status, priority, optionally linked to a task.             |
 | `comments`                   | Polymorphic: attached to a `task` or an `issue` via `commentable_type`/`commentable_id`. |
 | `activity_events`             | Append-only feed. Every mutating action writes one row here (see below). |
+| `task_attachments`             | Metadata for files attached to a task (Phase 2). The actual file bytes live in the private `task-attachments` Storage bucket. |
 
 Migrations live in [`database/migrations/`](../database/migrations/),
 numbered and applied in order. Each file is commented inline with what it
@@ -103,6 +104,18 @@ triggering RLS recursion on those same tables.
 the project Activity page (Phase 1/3) and, later, the audit log and AI
 assistant's data source. Rows are append-only - there's no UPDATE or
 DELETE policy - so the feed can't be edited after the fact.
+
+## File storage (task attachments)
+
+Migration `0008_task_attachments.sql` creates a private Supabase Storage
+bucket (`task-attachments`) alongside the `task_attachments` metadata
+table. Files are stored at `<project_id>/<task_id>/<uuid>-<filename>`, and
+the bucket's RLS policies (on `storage.objects`) check project membership
+straight from that path via `storage.foldername(name)` - no extra lookup
+table needed. Because the bucket is private, every download goes through
+a freshly generated short-lived signed URL
+(`src/services/attachments.ts`'s `getAttachmentDownloadUrl`) rather than a
+public URL.
 
 ## Applying migrations
 

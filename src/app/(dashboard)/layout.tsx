@@ -8,8 +8,10 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const profile = await requireProfile();
-  const active = await getActiveOrganization();
+  const [profile, active] = await Promise.all([
+    requireProfile(),
+    getActiveOrganization(),
+  ]);
 
   return (
     <div className="flex min-h-screen">

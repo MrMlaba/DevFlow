@@ -97,13 +97,82 @@ project's team already manages.
   confirmed against the framework's own bundled docs
   (`node_modules/next/dist/docs/`) before writing any routes, since
   training data predates this version.
+- A handful of bugs only surfaced once this ran against a real Supabase
+  project rather than just passing `npm run build` - worth calling out
+  since none of them were type errors:
+  - **Ambiguous embedded selects.** `project_members`/`organization_members`
+    each have two foreign keys to `profiles` (`user_id` and `invited_by`).
+    A select like `profiles(...)` without naming the FK
+    (`profiles!project_members_user_id_fkey(...)`) fails at request time
+    with `PGRST201`, not at build time.
+  - **RLS scopes by "can you see this row," not "is this row yours."**
+    `listUserProjects()`/`listUserOrganizations()` originally queried
+    `project_members`/`organization_members` unfiltered, trusting RLS to
+    return "my rows." But `is_project_member(project_id)` only checks
+    whether *you* belong to that project - so the query actually returned
+    every member's row for every project you're on, producing duplicate
+    projects in the UI. Fixed by adding an explicit `.eq("user_id", ...)`
+    - RLS is a ceiling on what a query is *allowed* to return, not a
+    substitute for the query's own `WHERE` clause.
+  - **Redundant `auth.getUser()` calls compound real latency.** Several
+    service functions called `supabase.auth.getUser()` directly instead of
+    the shared `cache()`-wrapped helper, so a single page load triggered
+    3-4 separate network round trips to Supabase's Auth server (a real
+    validation call, not a local JWT decode) instead of one. Consolidating
+    onto one cached helper per request measurably improved navigation
+    speed, especially with the Supabase project in a different region than
+    the dev machine.
 
-## ⬜ Phase 2 - Project management
+## ✅ Phase 2 - Project management
 
-Real Kanban board with drag-and-drop, task attachments, linked issues/PRs,
-and project statistics (completion %, open issues, active members, recent
-activity). Phase 1 ships task/issue CRUD and a status-grouped board
-without drag-and-drop as the honest MVP version of this.
+**Problem it solves:** Phase 1's task/issue CRUD proved the data model and
+permissions, but a status-grouped list isn't how anyone actually wants to
+triage work, and tasks had no way to carry supporting files or point at
+the bug they were meant to fix.
+
+**Why DevFlow needs it:** a Kanban board people will actually use day to
+day, plus the "professional" polish (drag-and-drop, attachments, linked
+issues, a real progress bar) the spec calls for.
+
+**How it works:**
+
+- **Drag-and-drop board** (`src/features/tasks/components/task-board.tsx`)
+  using `@dnd-kit/core`. Dropping a card on a different column calls the
+  same `updateTaskStatusAction` the manual status dropdown already used,
+  with an optimistic local move so the card doesn't wait for the round
+  trip. Column order within a status isn't persisted (no `position`
+  column) - cards re-sort to `created_at desc` on reload. Adding a
+  `position` column and a reorder mutation is the natural next step if
+  manual ordering turns out to matter.
+- **Task attachments**: a private Supabase Storage bucket
+  (`task-attachments`) plus a `task_attachments` metadata table (Phase 2's
+  addition to the schema - see `docs/database.md`). Upload/delete go
+  through Server Actions using the uploader's own session, so bucket RLS
+  is the same project-membership check as everything else. Downloads use
+  short-lived signed URLs since the bucket is private.
+- **Linked issues**: uses the `issues.linked_task_id` column that already
+  existed in the Phase 1 schema (issues could always point at a task; only
+  the UI to set/see it was missing). A task's detail view shows every
+  issue linking to it; an issue's detail view lets you change which task
+  it's linked to.
+- **Linked pull requests**: intentionally left as a labeled placeholder on
+  the task detail view ("Connects once GitHub integration is set up") -
+  there's no real PR data to link until Phase 4, and faking it would
+  violate the "never let the UI claim mock data is real" rule.
+- **Project statistics**: mostly already existed from Phase 1's project
+  overview page (tasks completed/total, open issues, active members,
+  activity feed). Phase 2 adds a visual progress bar and splits out
+  "tasks remaining" as its own stat, matching the spec's exact list.
+
+**How it's configured:** one additional migration
+(`database/migrations/0008_task_attachments.sql`) creates the table, the
+storage bucket, and both sets of RLS policies - no dashboard clicking
+required, same "run this SQL" workflow as Phase 1's schema.
+
+**How it integrates:** the board still writes through the exact same
+`services/tasks.ts` functions Phase 1 built; nothing about the data layer
+changed shape, only the UI on top of it. Attachments and linked issues use
+the RBAC model unchanged (`task:update` permission gates both).
 
 ## ⬜ Phase 3 - Activity and audit system
 

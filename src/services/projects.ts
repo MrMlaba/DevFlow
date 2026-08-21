@@ -4,6 +4,7 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { AppRole, Tables } from "@/types/database";
 import { logActivity } from "@/services/activity";
+import { getCurrentUser } from "@/services/auth";
 
 export type Project = Tables<"projects">;
 export type ProjectMember = Tables<"project_members"> & {
@@ -17,9 +18,18 @@ export interface ProjectWithRole {
 
 export async function listUserProjects(): Promise<ProjectWithRole[]> {
   const supabase = await createClient();
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  // Filter by user_id explicitly rather than relying on RLS to scope this
+  // to "my membership rows": is_project_member(project_id) only checks
+  // whether the current user belongs to that project, not whether a given
+  // row is theirs - so an unfiltered select returns every member's row
+  // for every project you're on, not just your own.
   const { data, error } = await supabase
     .from("project_members")
     .select("role, project:projects(*)")
+    .eq("user_id", user.id)
     .order("joined_at", { ascending: false });
 
   if (error) throw error;
@@ -74,7 +84,9 @@ export async function listProjectMembers(projectId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("project_members")
-    .select("*, profile:profiles(id, full_name, email, avatar_url)")
+    .select(
+      "*, profile:profiles!project_members_user_id_fkey(id, full_name, email, avatar_url)",
+    )
     .eq("project_id", projectId)
     .order("joined_at", { ascending: true });
 

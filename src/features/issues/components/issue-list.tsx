@@ -18,9 +18,18 @@ import { IssueDetailSheet } from "@/features/issues/components/issue-detail-shee
 import { ISSUE_PRIORITY_META, ISSUE_STATUS_META } from "@/config/status";
 import { StatusBadge } from "@/components/status-badge";
 import { initials, formatRelativeTime } from "@/lib/utils";
+import type { AssigneeOption } from "@/components/assignee-select";
 import type { Issue } from "@/services/issues";
 
-export function IssueList({ projectId, issues }: { projectId: string; issues: Issue[] }) {
+export function IssueList({
+  projectId,
+  issues,
+  tasks,
+}: {
+  projectId: string;
+  issues: Issue[];
+  tasks: AssigneeOption[];
+}) {
   const [selected, setSelected] = useState<Issue | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -100,6 +109,7 @@ export function IssueList({ projectId, issues }: { projectId: string; issues: Is
       <IssueDetailSheet
         issue={selected}
         projectId={projectId}
+        tasks={tasks}
         open={open}
         onOpenChange={setOpen}
       />

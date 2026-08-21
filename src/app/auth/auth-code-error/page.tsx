@@ -10,7 +10,9 @@ export default function AuthCodeErrorPage() {
         This confirmation or reset link is invalid or has expired. Request a
         new one and try again.
       </p>
-      <Button render={<Link href="/login" />}>Back to sign in</Button>
+      <Button nativeButton={false} render={<Link href="/login" />}>
+        Back to sign in
+      </Button>
     </div>
   );
 }

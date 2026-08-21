@@ -101,7 +101,12 @@ export default async function OverviewPage() {
         <div className="space-y-4 lg:col-span-2">
           <div className="flex items-center justify-between">
             <h2 className="font-medium">Your projects</h2>
-            <Button variant="link" className="px-0" render={<Link href="/projects" />}>
+            <Button
+              variant="link"
+              className="px-0"
+              nativeButton={false}
+              render={<Link href="/projects" />}
+            >
               View all
             </Button>
           </div>
@@ -128,7 +133,12 @@ export default async function OverviewPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-medium">Activity</h2>
-            <Button variant="link" className="px-0" render={<Link href="/activity" />}>
+            <Button
+              variant="link"
+              className="px-0"
+              nativeButton={false}
+              render={<Link href="/activity" />}
+            >
               <History className="size-3.5" />
               View all
             </Button>

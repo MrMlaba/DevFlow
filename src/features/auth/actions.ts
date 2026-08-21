@@ -14,6 +14,7 @@ import {
 } from "@/lib/validations/auth";
 import { fromZodError, type FormState } from "@/lib/form-state";
 import { redeemInvitationsForEmail } from "@/services/members";
+import { requireUser } from "@/services/auth";
 
 export async function signUp(
   _prevState: FormState,
@@ -139,12 +140,8 @@ export async function updateProfile(
   });
   if (!parsed.success) return fromZodError(parsed.error);
 
+  const user = await requireUser();
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
   const { error } = await supabase
     .from("profiles")
     .update({

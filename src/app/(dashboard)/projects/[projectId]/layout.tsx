@@ -17,11 +17,11 @@ export default async function ProjectLayout({
   const { projectId } = await params;
   const user = await requireUser();
 
-  const project = await getProjectById(projectId);
-  if (!project) notFound();
-
-  const role = await getMyRoleForProject(projectId, user.id);
-  if (!role) notFound();
+  const [project, role] = await Promise.all([
+    getProjectById(projectId),
+    getMyRoleForProject(projectId, user.id),
+  ]);
+  if (!project || !role) notFound();
 
   return (
     <div className="space-y-6">
