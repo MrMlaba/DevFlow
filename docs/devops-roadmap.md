@@ -1113,10 +1113,95 @@ infrastructure comes to exist, not what it is.
   this time, but applying the same defensive habit rather than waiting
   to get bitten again felt like the right call.
 
-## ⬜ Phase 13 - Kubernetes locally
+## ✅ Phase 13 - Kubernetes locally
 
-Kind/Minikube. Manifests for frontend/backend/worker/redis/postgres:
-Deployments, Services, ConfigMaps, Secrets, Ingress, probes, HPA.
+**Problem it solves:** every deployment so far is one process on one
+host (Vercel's Preview/Production, one EC2 instance). Nothing in this
+project has run behind a scheduler that can restart a crashed
+container, spread replicas across a load-balanced Service, or scale
+based on real load - the actual subject "Kubernetes" is meant to teach.
+
+**Why DevFlow needs it:** this is the local-first proving ground for
+Phase 14 (EKS) - the same manifests, pointed at a different cluster.
+Getting Deployments/Services/Ingress/HPA right somewhere free and fast
+to iterate on is what makes Phase 14 "point kubectl at EKS instead,"
+not "learn Kubernetes and EKS at the same time."
+
+**How it works:**
+
+- **`kubernetes/`**: one Deployment (2 replicas, the same container
+  Phase 9 publishes), a ClusterIP Service, an Ingress, an HPA
+  (2-5 replicas, 70% CPU target), a ConfigMap for the one non-secret env
+  var, and `secret.example.yaml` as reference only - the real Secret is
+  created imperatively from `.env.local`, never written to a file that
+  could get committed (same reasoning as Terraform keeping secrets out
+  of state entirely, Phase 12). No `frontend/`/`backend/`/`worker/`/
+  `redis/` split from the original phase plan - one app, no Redis
+  consumer, same call already made in Phase 6 and Phase 11.
+- **Probes reuse Phase 6's `/api/health`** - deliberately "is the
+  process up," not "can it reach Supabase," so both the Docker
+  `HEALTHCHECK` and now Kubernetes' liveness/readiness probes share one
+  definition of healthy instead of two that could disagree.
+- **Cluster: k3s installed directly inside WSL2, not Kind or
+  Minikube** - a real, hardware-driven deviation from the original
+  phase plan, decided partway through (see "what was learned"). k3s
+  bundles its own containerd (no Docker needed at all), Traefik
+  (ingress, no separate install), and metrics-server (HPA, no separate
+  install) - meaningfully lighter than Kind/Minikube, both of which need
+  Docker Desktop running as a second VM alongside whatever's already
+  using memory. `kind-config.yaml` is kept as a documented alternative
+  for a less memory-constrained machine.
+
+**How it's configured:** see `kubernetes/README.md` for the exact
+commands - `wsl -u root -d Ubuntu` (k3s's `kubectl` needs root), then
+`k3s kubectl apply` the manifests in order, creating the Secret
+imperatively from `.env.local` in between.
+
+**How it integrates:** runs the exact same GHCR image every other
+deployment phase runs - this phase changed *where* it runs and *what
+schedules it*, not what it is.
+
+**What was learned:**
+
+- **This machine has 7.65GB of RAM, and that genuinely wasn't enough
+  to run Kind or Minikube reliably alongside Windows, VS Code, and this
+  Claude Code session** - not a configuration problem to solve, a real
+  resource ceiling. `kind create cluster` crashed outright with an
+  out-of-memory error inside the node container before a single
+  manifest was ever applied. Switching to k3s-in-WSL2 (skipping Docker
+  Desktop's second VM entirely) was the fix, not a larger `.wslconfig`
+  memory allocation - there wasn't spare memory to allocate.
+- **Once k3s was running, pods still restarted periodically** - not
+  OOMKilled (exit code 143 is SIGTERM, and the kernel log had no
+  OOM-killer entries), but real "pod sandbox changed, it will be killed
+  and re-created" events, traced to the WSL2 VM itself being unstable
+  under memory pressure (`dmesg` showed `systemd-journald` receiving
+  SIGTERM from a full shutdown sequence mid-session - the VM, not just a
+  container, was restarting). Root cause: Docker Desktop was still
+  running in the background, entirely unnecessary once k3s's own
+  containerd took over - quitting it recovered 1.2GB immediately and
+  measurably reduced (though didn't perfectly eliminate) the restarts.
+  The lesson generalizes past this one machine: once a tool is replaced
+  by something that doesn't need it, actually stop the old one rather
+  than leaving it running "just in case" - it was never a free
+  bystander, it was competing for the same constrained resource the
+  whole time.
+- **k3s's bundled LoadBalancer implementation (klipper-lb) crash-looped
+  in this environment** - an iptables/WSL2-kernel interaction, not a
+  manifest issue: the Ingress and Service were verified correctly
+  routing traffic (reaching the app through Traefik's own NodePort
+  directly, from inside WSL2), only the "forward host port 80
+  automatically" convenience layer on top was broken. `kubectl
+  port-forward` - a completely different mechanism, proxied through the
+  API server rather than iptables NAT - both sidestepped the broken
+  piece and gave a real, verified end-to-end login test (not just a
+  health check) once the pods were stable enough to hold still for it.
+- Two separate WSL2/Windows quirks needed working around just to run
+  commands at all: the k3s install script's own `sudo` prompt hangs
+  forever with no TTY to answer it (fixed with `wsl -u root`, bypassing
+  sudo entirely), and blocking, in-progress background shell calls
+  needed polling/rescheduling rather than long single waits, the same
+  discipline `ScheduleWakeup` already existed for.
 
 ## ⬜ Phase 14 - AWS EKS
 

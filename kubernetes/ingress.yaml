@@ -1,0 +1,21 @@
+# ingressClassName: traefik - k3s bundles Traefik as its default ingress
+# controller (no separate install needed, unlike kind/minikube). Using
+# kind instead? Install ingress-nginx and change this to "nginx" - see
+# README for both paths.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: devflow
+  namespace: devflow
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: devflow
+                port:
+                  number: 80

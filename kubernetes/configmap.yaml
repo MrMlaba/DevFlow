@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devflow-config
+  namespace: devflow
+data:
+  # The only non-secret env var - everything else the app needs
+  # (Supabase keys, GitHub OAuth secret) lives in a Secret instead. See
+  # kubernetes/secret.example.yaml for how to create it.
+  NEXT_PUBLIC_SITE_URL: "http://localhost"

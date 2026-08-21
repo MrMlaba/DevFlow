@@ -1,0 +1,23 @@
+# Needs metrics-server to do anything - k3s bundles it by default
+# (nothing to install); kind/minikube need it added separately, see
+# README. Without it this resource still applies cleanly but reports
+# "unknown" for current CPU usage and never actually scales.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: devflow
+  namespace: devflow
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: devflow
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

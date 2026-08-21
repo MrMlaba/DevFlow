@@ -266,6 +266,21 @@ either `terraform import` each resource, or tear down the manually-
 created resources first and let `terraform apply` create them fresh -
 this project did the latter (see Phase 12's "what was learned" for why).
 
+## Kubernetes locally (Phase 13)
+
+`kubernetes/README.md` has the exact commands. Short version: this
+project uses **k3s installed directly inside WSL2**, not Kind or
+Minikube - both need Docker Desktop running as a second VM, which was
+enough to destabilize a memory-constrained machine (see
+`docs/devops-roadmap.md`, Phase 13, for the full story). If your
+machine has more headroom, `kind-config.yaml` is kept as a documented
+alternative.
+
+One real gotcha worth knowing before you hit it: k3s's install script
+prompts for `sudo`, which hangs forever with no TTY to answer it in a
+non-interactive shell. Run it as root directly instead:
+`wsl -u root -d Ubuntu -- bash -c "curl -sfL https://get.k3s.io | sh -"`.
+
 ## Running with Docker
 
 Builds and runs the app in a container against your existing cloud

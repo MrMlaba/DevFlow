@@ -1,0 +1,22 @@
+# For the kind path specifically (see README for the k3s alternative,
+# which is what this project's own verified deployment actually used).
+# Single control-plane node with host ports 80/443 mapped in - what
+# ingress-nginx needs to be reachable from outside the cluster at all.
+# `kind create cluster --config kind-config.yaml`.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
