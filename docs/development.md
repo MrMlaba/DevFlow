@@ -190,6 +190,45 @@ Vercel) can open Staging/Production links until you either attach a
 custom domain or turn protection off explicitly in Project Settings ->
 Deployment Protection.
 
+## AWS (Phase 11)
+
+The same container Phase 6 already builds, running on a real EC2
+instance instead of a laptop - see `docs/devops-roadmap.md` (Phase 11)
+for the full architecture and why load balancers/NAT Gateways/RDS were
+deliberately left out (the first two cost money just for existing; the
+third would duplicate Supabase, which the app already uses for
+everything).
+
+**One-time account setup:**
+
+1. Create an AWS account (requires a payment card even for free-tier
+   usage - it won't be charged as long as usage stays in bounds).
+2. **Before creating anything else**: AWS Budgets -> create a budget,
+   alert at a low threshold (this project uses $1) - the point is being
+   notified within hours of any real spend, not at the end of the month.
+3. Enable MFA on the root account (root has no permission limits, so
+   it's the login worth protecting).
+4. IAM -> create a user (not root) with `AdministratorAccess`, create an
+   access key for it (CLI use case).
+5. Put `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in `.env.local` -
+   these are for the AWS CLI on your own machine, not read by the
+   Next.js app itself (see `.env.example`).
+6. Make the `devflow` GHCR package public (github.com/MrMlaba/DevFlow ->
+   Packages -> devflow -> Package settings -> Change visibility) - the
+   EC2 instance pulls it without needing a second credential this way.
+
+The app itself, running on that infrastructure, gets its config from
+AWS Systems Manager Parameter Store (`/devflow/*`, `SecureString`) at
+boot - not from `.env.local` and not baked into the instance. Only the
+EC2 instance's own IAM role can read them.
+
+**Windows-specific gotcha**: Git Bash rewrites `/`-prefixed CLI arguments
+into Windows paths (MSYS path conversion), which breaks AWS CLI
+parameter names and `file://` references in ways that look like a real
+AWS error but aren't. Set `MSYS_NO_PATHCONV=1` before running `aws`
+commands from Git Bash. PowerShell and a real Linux/macOS shell don't
+have this problem.
+
 ## Running with Docker
 
 Builds and runs the app in a container against your existing cloud

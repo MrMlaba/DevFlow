@@ -923,10 +923,110 @@ someone's connected a repo to it, unchanged since Phase 4.
   whoever owns the project to make, not something to flip quietly while
   wiring up a deploy pipeline.
 
-## ⬜ Phase 11 - AWS
+## ✅ Phase 11 - AWS
 
-First manual production deployment: IAM, VPC, subnets, security groups,
-load balancing, ECR, CloudWatch, RDS, S3.
+**Problem it solves:** every deployment so far runs on someone else's
+platform-as-a-service (Vercel). Nothing in this project has touched
+raw cloud infrastructure - the actual skill "AWS" is meant to teach.
+
+**Why DevFlow needs it:** Phase 12 (Terraform) codifies infrastructure
+that has to exist in some real shape first, and the whole back half of
+this roadmap (Kubernetes, GitOps) assumes comfort with VPCs, IAM, and
+EC2 - manually first, so the Terraform that follows is describing
+something already understood, not typed from a tutorial.
+
+**How it works:**
+
+- **Networking, provisioned manually via the AWS CLI** (this *is* "first
+  manual production deployment" - Terraform is next phase, deliberately):
+  a VPC (`10.0.0.0/16`), one public subnet, an Internet Gateway, and a
+  route table sending `0.0.0.0/0` through it. No NAT Gateway - nothing
+  here needs outbound access from a *private* subnet, so paying for one
+  (~$32/mo just to exist) would be pure cost with no purpose.
+- **No load balancer** - a single EC2 instance with an Elastic IP
+  instead. An ALB costs ~$16-22/month to exist regardless of traffic;
+  for one instance serving a personal project, that's cost with no
+  benefit yet. The real trigger for adding one is more than one
+  instance to balance across - not there yet.
+- **No RDS** - DevFlow's database has been Supabase since Phase 1, and
+  every service function is wired to it. Standing up a second, empty
+  Postgres instance on RDS would be exactly the "infrastructure the app
+  doesn't actually use" this project has avoided since Phase 6's
+  Postgres/Redis decision - not a shortcut, the same principle applied
+  again.
+- **IAM**: one role for the EC2 instance (least-privilege, not
+  administrator) - `AmazonSSMManagedInstanceCore` (shell access via
+  Session Manager, so port 22 never needs to be open - no SSH key to
+  lose or leak) plus a scoped inline policy for exactly two things: read
+  `/devflow/*` in SSM Parameter Store, write to the `/devflow/*`
+  CloudWatch Logs group. The security group allows inbound port 80 only
+  - nothing else, no SSH port at all.
+- **Secrets**: the app's env vars live in SSM Parameter Store
+  (`SecureString`, KMS-encrypted) under `/devflow/*`, not baked into the
+  instance or its user-data script in plaintext. The instance's own IAM
+  role is what's allowed to read them - nothing else can.
+- **The actual deployment**: an EC2 `t3.micro` (free-tier eligible)
+  running Amazon Linux 2023, whose user-data script installs Docker,
+  pulls the *exact same image Phase 9's `docker.yml` already publishes*
+  (`ghcr.io/mrmlaba/devflow:latest` - made public so the instance can
+  pull it without a second credential), and runs it with env vars
+  fetched from SSM at boot. This is the same container Phase 6 already
+  proved works, running on real infrastructure instead of a laptop -
+  not a separate deployment story.
+- **CloudWatch**: the container's own stdout/stderr streams to
+  `/devflow/app` via Docker's built-in `awslogs` log driver - real
+  centralized logging, not a placeholder.
+- **S3**: not used yet. Its real purpose here is Terraform remote state
+  (Phase 12) - provisioning a bucket now, before anything needs it,
+  would be the same "infrastructure nothing uses yet" problem everything
+  else in this phase deliberately avoided.
+
+**How it's configured:** an AWS account, its root user protected with
+MFA, and a non-root IAM user (`AdministratorAccess` - reasonable for a
+personal account with exactly one user, not a team) whose access keys
+are what actually provisioned everything above. A **Budget set to $1/
+month with an email alert at $0.01 actual spend** was the first thing
+created, before any billable resource - the point of a guardrail is
+being in place *before* the thing it guards against, not after.
+
+**How it integrates:** nothing about the app changed - this phase is
+purely "run the existing container somewhere real." The same
+`/api/health` route Phase 6 built for Docker's own `HEALTHCHECK` is
+what proved the deployment actually works here too.
+
+**What was learned:**
+
+- **A load balancer and a NAT Gateway are the two AWS resources that
+  cost money just for existing**, independent of any traffic or usage -
+  everything else in this phase's architecture (VPC, subnets, security
+  groups, IAM roles, an EC2 free-tier instance, SSM parameters,
+  CloudWatch Logs at this volume) is genuinely $0 while in free tier.
+  Knowing which two components carry that property is what made "stay
+  on a $0 plan" an actual achievable target rather than a hope.
+- **Git Bash on Windows silently rewrites `/`-prefixed CLI arguments into
+  Windows paths** (MSYS path conversion) - `aws ssm get-parameter --name
+  /aws/service/...` failed with a validation error that looked like a
+  malformed parameter name, but the real argument the native `aws.exe`
+  received had already been mangled by the shell before it ever reached
+  AWS. Fixed with `MSYS_NO_PATHCONV=1`. The same tool, run from a real
+  Linux shell (or PowerShell), would never have hit this - worth
+  remembering that some bugs are specific to the terminal, not the CLI
+  or the cloud.
+- **`file://` arguments have the same problem, one level worse**: even
+  with path conversion disabled, `aws iam create-role
+  --assume-role-policy-document file:///c/Users/...` still failed,
+  because the native Windows AWS CLI needs an actual Windows-style path
+  after `file://`, not a Git-Bash Unix-style one - `cygpath` converts
+  between the two, but the more robust fix for short JSON documents was
+  avoiding the file reference entirely and passing the policy inline.
+- **A partially-completed multi-step AWS CLI script needed the same
+  discipline as a partially-failed deployment**: a 60-second timeout cut
+  off a script partway through VPC creation, and the instinct to "just
+  re-run it" would have created duplicate VPCs, gateways, and route
+  tables. Checked what already existed via `describe-*` calls first,
+  then resumed only the steps that hadn't actually completed - the same
+  "verify before assuming" habit as everywhere else in this project,
+  just applied to cloud resources instead of code.
 
 ## ⬜ Phase 12 - Terraform
 
