@@ -439,9 +439,11 @@ three phases' worth of other changes.
   source changes; a `builder` stage runs `npm run build`; a `runner`
   stage copies only the traced output `next.config.ts`'s new
   `output: "standalone"` produces (`.next/standalone`, `.next/static`,
-  `public`) into a fresh `node:20-alpine` image, running as a non-root
+  `public`) into a fresh `node:22-alpine` image, running as a non-root
   user. No source, no dev dependencies, no full `node_modules` in the
-  final image.
+  final image. (Originally `node:20-alpine` - bumped to 22 once Phase 7
+  found that version was actually broken for this app; see that phase's
+  notes below.)
 - **A liveness endpoint**, `/api/health` (`src/app/api/health/route.ts`):
   returns `200 {"status":"ok"}` immediately - deliberately cheap ("is the
   process up," not "can it reach Supabase"), so Docker's `HEALTHCHECK`
@@ -607,6 +609,32 @@ authorization shape as everything else GitHub-related.
   (`tests/unit/services/github-pipelines.test.ts`) since it's exactly the
   kind of mapping logic that's easy to get subtly wrong and easy to test
   in isolation.
+- **`tsc --noEmit` on its own doesn't have what `next build` generates for
+  free.** The first real CI run failed `type-check` with "Cannot find
+  name 'PageProps'"/`'LayoutProps'` - Next's route-aware type helpers
+  (used in `layout.tsx`, `login/page.tsx`) live in `.next/types/`, which
+  `next build`/`next dev` generate as a side effect but a standalone
+  `tsc --noEmit` never triggers on its own. Never caught locally because
+  `.next/` already existed from prior local builds. Fixed with
+  `next typegen` (generates just the route types, no full build) as a
+  step before `type-check` in CI.
+- **This app's actual minimum Node version turned out to be 22, not
+  20** - and every earlier phase had been silently relying on this
+  machine's Node 24. `@supabase/supabase-js`'s `realtime-js` dependency
+  initializes a `RealtimeClient` unconditionally inside the
+  `SupabaseClient` constructor (every `createClient()` call, whether or
+  not realtime features are used), and that constructor requires a native
+  `WebSocket` global - present in Node 22+, not Node 20. The `e2e` job's
+  `npm run db:seed` step crashed with "Node.js detected but native
+  WebSocket not found" the instant it created a Supabase client, on a
+  workflow pinned to `node-version: 20`. Bumped to Node 22 everywhere
+  that runs this app for real: `ci.yml`, the Phase 6 `Dockerfile`
+  (`node:20-alpine` -> `node:22-alpine`), and `package.json`'s new
+  `engines.node`. Local development never hit this because it happened
+  to run on Node 24 the whole time - a reminder that "works on my
+  machine" can be hiding an actual minimum-version requirement, not just
+  a preference, and that CI running on a *different*, explicitly-pinned
+  Node version is exactly what catches that.
 
 ## ⬜ Phase 8 - DevSecOps
 

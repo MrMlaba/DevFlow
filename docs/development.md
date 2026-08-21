@@ -2,7 +2,10 @@
 
 ## Prerequisites
 
-- Node.js 20+ and npm
+- **Node.js 22+** and npm - not just "recent enough": `@supabase/supabase-js`
+  requires a native `WebSocket` global (Node 22+) the instant anything
+  calls `createClient()`, even if nothing uses realtime features. Older
+  Node throws immediately (see `docs/devops-roadmap.md`, Phase 7).
 - A free [Supabase](https://supabase.com) project (Postgres + Auth)
 - A [GitHub OAuth App](https://github.com/settings/developers) (Phase 4+
   - only needed to test the GitHub integration; the rest of the app works

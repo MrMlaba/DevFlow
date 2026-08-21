@@ -4,7 +4,11 @@
 # its traced runtime dependencies (see output: "standalone" in
 # next.config.ts) - no source, no dev dependencies, no full node_modules.
 
-FROM node:20-alpine AS base
+# Node 22, not 20: @supabase/supabase-js's realtime-js requires a native
+# `WebSocket` global (Node 22+) the instant any code calls createClient(),
+# even when nothing uses realtime features - throws on Node <22 instead
+# (see .github/workflows/ci.yml for how this was found).
+FROM node:22-alpine AS base
 
 # ---- deps: install once, reused by the builder stage's cache layer ----
 FROM base AS deps
