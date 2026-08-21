@@ -41,7 +41,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: GitPullRequest,
     live: true,
   },
-  { title: "Pipelines", href: "/pipelines", icon: Workflow, live: false },
+  { title: "Pipelines", href: "/pipelines", icon: Workflow, live: true },
   { title: "Deployments", href: "/deployments", icon: Rocket, live: false },
   { title: "Environments", href: "/environments", icon: Boxes, live: false },
   { title: "Monitoring", href: "/monitoring", icon: LineChart, live: false },

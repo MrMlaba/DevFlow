@@ -97,6 +97,17 @@ Supabase quota, not an app failure.
 See [`docs/devops-roadmap.md`](./devops-roadmap.md) for what each test
 file covers and what E2E testing caught that unit tests couldn't.
 
+## CI (GitHub Actions)
+
+`.github/workflows/ci.yml` runs `lint`/`type-check`/`unit-tests`/`build`
+on every push and pull request to `main` - no setup needed, none of them
+use secrets. The `e2e` job (push to `main` only) needs four repository
+secrets set at Settings -> Secrets and variables -> Actions, using the
+same values as your `.env.local`: `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`SEED_USER_PASSWORD`. Without them, that one job fails while the other
+four still pass normally.
+
 ## Running with Docker
 
 Builds and runs the app in a container against your existing cloud

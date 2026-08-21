@@ -519,10 +519,94 @@ Docker changes.
   actually runs multiple replicas or does rolling deploys across
   separate image builds.
 
-## ⬜ Phase 7 - CI with GitHub Actions
+## ✅ Phase 7 - CI with GitHub Actions
 
-`ci.yml`: checkout, install, lint, type-check, unit tests, build, e2e.
-Results surfaced in a DevFlow Pipelines dashboard.
+**Problem it solves:** every check so far (`lint`, `type-check`, `test`,
+`build`, `test:e2e`) only ran when someone remembered to run it by hand.
+Nothing stopped a broken build or a failing test from reaching `main`.
+
+**Why DevFlow needs it:** this is the first *real, DevFlow-external*
+DevOps system in the project - GitHub, not something DevFlow's own code
+runs - and it's the data source for the Pipelines dashboard the spec
+calls for. Phase 9 (registry) and Phase 10+ (deployments) both build on
+"there's a CI run for every commit," so it has to exist before either can.
+
+**How it works:**
+
+- **`.github/workflows/ci.yml`**, four independent jobs on every push and
+  pull request to `main`: `lint`, `type-check`, `unit-tests`, `build`.
+  None of them need secrets - Phase 6 already confirmed `next build`
+  succeeds with zero environment variables present, since nothing here
+  reads a Supabase value during static generation or from a Client
+  Component.
+- **A fifth job, `e2e`, runs only on push to `main`** (not on every PR):
+  it seeds the database (`npm run db:seed` - safe to re-run, every insert
+  in the seed script checks for an existing row first) and runs the full
+  Playwright suite against a freshly-started server, same as locally.
+  Deliberately *not* on every PR: this suite logs in as the seeded demo
+  accounts and creates real, timestamped projects/tasks in the same live
+  Supabase project `npm run dev` already uses - DevFlow has no separate
+  test environment (see "what was learned" below) - and running it on
+  every PR would multiply both that data growth and how often the
+  registration test can hit Supabase's email rate limit. Needs four
+  repository secrets set in GitHub (Settings -> Secrets and variables ->
+  Actions): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+  `SUPABASE_SERVICE_ROLE_KEY`, `SEED_USER_PASSWORD` - the same values
+  already in `.env.local`.
+- **The Pipelines page is live now** (`src/app/(dashboard)/pipelines/`,
+  `live: true` in `config/navigation.ts`): it fetches CI runs straight
+  from GitHub's REST API (`GET /repos/{owner}/{repo}/actions/runs`, then
+  each run's `/jobs` for a per-job status breakdown) for every project
+  the user belongs to that has a connected repository - the exact same
+  "fetch live, don't persist" pattern Phase 4 already used for a repo's
+  branches/contributors/releases. `MOCK_PIPELINES` is gone; the page
+  shows a real empty state ("Connect a GitHub repository...") when a
+  project has no connected repo, or that repo has no runs yet, instead of
+  the old `<PreviewDataBanner />`.
+
+**How it's configured:** nothing new beyond the repository secrets
+above - the workflow file and the Pipelines page both reuse Phase 4's
+GitHub OAuth connection (`github_accounts`, `project_repositories`) for
+everything they need.
+
+**How it integrates:** `listVisiblePipelineRuns()`
+(`src/services/github.ts`) composes the same `getProjectRepository()` /
+`getGitHubAccount()` lookups the project overview page's repository
+snapshot already uses, so a pipeline run only shows up for a project once
+someone's actually connected a repo to it (Settings tab) - same
+authorization shape as everything else GitHub-related.
+
+**What was learned:**
+
+- Verified the empty state, not (yet) the populated one: `ci.yml` didn't
+  exist on GitHub until this phase's commit is pushed, so
+  `MrMlaba/DevFlow` genuinely has zero Actions runs to fetch right now.
+  Ran the new Pipelines page against the live dev server and confirmed it
+  renders the "No CI runs yet" empty state correctly rather than
+  crashing or showing anything fabricated - the "there are real runs and
+  they render with the right status/stage badges" path can only be
+  verified after pushing, since a run has to actually happen on GitHub
+  first.
+- DevFlow doesn't have a separate CI/test Supabase project - every phase
+  so far has tested directly against the one real project, which is a
+  deliberate, cost-free choice for a personal learning project but means
+  the E2E job in CI writes real rows to the same database dashboard use
+  does. Scoping E2E to `main`-only pushes (rather than skipping it
+  entirely, or accepting it on every PR) is this phase's answer to that
+  tradeoff - documented here rather than solved with new infrastructure,
+  since a real separate environment is a bigger decision than this phase
+  needs to make.
+- GitHub's workflow-run status/conclusion pair has more states
+  (`skipped`, `neutral`, `timed_out`, `action_required`,
+  `startup_failure`) than the UI's five-state badge
+  (`queued`/`running`/`success`/`failed`/`cancelled`) or four-state stage
+  badge (`success`/`failed`/`running`/`pending`) have room for. Grouping
+  `skipped`/`neutral` under "cancelled" rather than "failed" was a
+  deliberate call - a job that didn't run isn't the same claim as a job
+  that ran and broke - and is unit-tested directly
+  (`tests/unit/services/github-pipelines.test.ts`) since it's exactly the
+  kind of mapping logic that's easy to get subtly wrong and easy to test
+  in isolation.
 
 ## ⬜ Phase 8 - DevSecOps
 

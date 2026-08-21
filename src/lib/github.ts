@@ -248,6 +248,69 @@ export function getPullRequest(
 }
 
 // ---------------------------------------------------------------------------
+// Actions (CI runs) - Phase 7
+// ---------------------------------------------------------------------------
+
+export interface GitHubWorkflowRun {
+  id: number;
+  name: string | null;
+  display_title: string;
+  head_branch: string;
+  head_sha: string;
+  run_number: number;
+  event: string;
+  status: "queued" | "in_progress" | "completed" | "waiting" | string;
+  conclusion:
+    | "success"
+    | "failure"
+    | "cancelled"
+    | "skipped"
+    | "timed_out"
+    | "action_required"
+    | "startup_failure"
+    | "neutral"
+    | null;
+  html_url: string;
+  run_started_at: string | null;
+  updated_at: string;
+  actor: { login: string; avatar_url: string } | null;
+  head_commit: { message: string } | null;
+}
+
+export async function listWorkflowRuns(
+  token: string,
+  owner: string,
+  repo: string,
+  perPage = 15,
+) {
+  const res = await githubFetch<{ workflow_runs: GitHubWorkflowRun[] }>(
+    `/repos/${owner}/${repo}/actions/runs?per_page=${perPage}`,
+    token,
+  );
+  return res.workflow_runs;
+}
+
+export interface GitHubWorkflowJob {
+  id: number;
+  name: string;
+  status: "queued" | "in_progress" | "completed" | "waiting" | string;
+  conclusion: string | null;
+}
+
+export async function listWorkflowRunJobs(
+  token: string,
+  owner: string,
+  repo: string,
+  runId: number,
+) {
+  const res = await githubFetch<{ jobs: GitHubWorkflowJob[] }>(
+    `/repos/${owner}/${repo}/actions/runs/${runId}/jobs`,
+    token,
+  );
+  return res.jobs;
+}
+
+// ---------------------------------------------------------------------------
 // Webhooks
 // ---------------------------------------------------------------------------
 

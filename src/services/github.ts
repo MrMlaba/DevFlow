@@ -344,3 +344,125 @@ export async function getRepositorySnapshot(
   ]);
   return { branches, contributors, releases, issues };
 }
+
+// ---------------------------------------------------------------------------
+// CI pipeline runs (Phase 7) - also live/unpersisted, same reasoning as the
+// repo snapshot above: this is GitHub's own data, fetched fresh rather than
+// synced into a table nothing else needs it to be in.
+// ---------------------------------------------------------------------------
+
+export type PipelineStageStatus = "success" | "failed" | "running" | "pending";
+export type PipelineRunStatus = "queued" | "running" | "success" | "failed" | "cancelled";
+
+export interface PipelineRun {
+  id: number;
+  projectId: string;
+  projectName: string;
+  runNumber: number;
+  branch: string;
+  commitSha: string;
+  commitMessage: string;
+  author: string;
+  status: PipelineRunStatus;
+  htmlUrl: string;
+  startedAt: string;
+  durationSeconds: number | null;
+  stages: { name: string; status: PipelineStageStatus }[];
+}
+
+export function runStatus(run: gh.GitHubWorkflowRun): PipelineRunStatus {
+  if (run.status === "queued" || run.status === "waiting") return "queued";
+  if (run.status === "in_progress") return "running";
+  switch (run.conclusion) {
+    case "success":
+      return "success";
+    case "cancelled":
+      return "cancelled";
+    // "skipped"/"neutral" completed without really running either way -
+    // the run-level badge only has 5 states, so group them with cancelled
+    // rather than call an unstarted job a "failure".
+    case "skipped":
+    case "neutral":
+      return "cancelled";
+    default:
+      return "failed";
+  }
+}
+
+export function jobStatus(job: gh.GitHubWorkflowJob): PipelineStageStatus {
+  if (job.status !== "completed") return job.status === "in_progress" ? "running" : "pending";
+  return job.conclusion === "success" ? "success" : "failed";
+}
+
+/** Most recent CI runs for one connected repository, with their per-job breakdown. */
+async function getPipelineRuns(
+  project: Pick<Project, "id" | "name">,
+  repository: ProjectRepository,
+  token: string,
+  runsLimit = 10,
+): Promise<PipelineRun[]> {
+  const runs = await gh
+    .listWorkflowRuns(token, repository.owner, repository.name, runsLimit)
+    .catch(() => []);
+
+  return Promise.all(
+    runs.map(async (run) => {
+      const jobs = await gh
+        .listWorkflowRunJobs(token, repository.owner, repository.name, run.id)
+        .catch(() => []);
+
+      const startedAt = run.run_started_at ?? run.updated_at;
+      const durationSeconds =
+        run.status === "completed"
+          ? Math.max(
+              0,
+              Math.round(
+                (new Date(run.updated_at).getTime() - new Date(startedAt).getTime()) / 1000,
+              ),
+            )
+          : null;
+
+      return {
+        id: run.id,
+        projectId: project.id,
+        projectName: project.name,
+        runNumber: run.run_number,
+        branch: run.head_branch,
+        commitSha: run.head_sha.slice(0, 7),
+        commitMessage: run.head_commit?.message.split("\n")[0] ?? run.display_title,
+        author: run.actor?.login ?? "Unknown",
+        status: runStatus(run),
+        htmlUrl: run.html_url,
+        startedAt,
+        durationSeconds,
+        stages: jobs.map((job) => ({ name: job.name, status: jobStatus(job) })),
+      } satisfies PipelineRun;
+    }),
+  );
+}
+
+/**
+ * CI runs across every project the user belongs to that has a connected
+ * repository - the cross-project Pipelines page's data source. Projects
+ * without a connected repo, or whose connector's GitHub account can't be
+ * loaded, are silently skipped rather than erroring the whole page.
+ */
+export async function listVisiblePipelineRuns(
+  projects: Pick<Project, "id" | "name">[],
+): Promise<PipelineRun[]> {
+  const runsByProject = await Promise.all(
+    projects.map(async (project) => {
+      const repository = await getProjectRepository(project.id);
+      if (!repository) return [];
+
+      const account = await getGitHubAccount(repository.connected_by).catch(() => null);
+      if (!account) return [];
+
+      return getPipelineRuns(project, repository, account.access_token);
+    }),
+  );
+
+  return runsByProject
+    .flat()
+    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+}
