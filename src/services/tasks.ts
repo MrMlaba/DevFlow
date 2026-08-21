@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/types/database";
 import { logActivity } from "@/services/activity";
+import { logAudit } from "@/services/audit";
 import type { Project } from "@/services/projects";
 
 export type Task = Tables<"tasks"> & {
@@ -226,5 +227,15 @@ export async function deleteTask(input: {
     objectType: "task",
     objectId: input.taskId,
     description: `deleted task "${input.title}"`,
+  });
+
+  await logAudit({
+    actorId: input.actorId,
+    organizationId: input.project.organization_id,
+    projectId: input.project.id,
+    action: "task.deleted",
+    targetType: "task",
+    targetId: input.taskId,
+    description: `Deleted task "${input.title}"`,
   });
 }

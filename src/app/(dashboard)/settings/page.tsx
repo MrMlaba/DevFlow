@@ -50,6 +50,26 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {active && can(active.role, "organization:manage") && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Audit log</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between">
+            <p className="text-muted-foreground text-sm">
+              Logins, role and membership changes, and deletions.
+            </p>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/settings/audit-log" />}
+            >
+              View
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

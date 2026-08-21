@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AppRole } from "@/types/database";
 import { logActivity } from "@/services/activity";
+import { logAudit } from "@/services/audit";
 import type { Project } from "@/services/projects";
 
 export interface InviteMemberResult {
@@ -49,6 +50,17 @@ export async function inviteProjectMember(input: {
       description: `added ${existingProfile.full_name ?? existingProfile.email} to "${input.project.name}" as ${input.role.replace("_", " ")}`,
     });
 
+    await logAudit({
+      actorId: input.invitedBy,
+      organizationId: input.project.organization_id,
+      projectId: input.project.id,
+      action: "member.added",
+      targetType: "project_member",
+      targetId: existingProfile.id,
+      description: `Added ${existingProfile.full_name ?? existingProfile.email} to "${input.project.name}" as ${input.role}`,
+      metadata: { role: input.role },
+    });
+
     return { status: "added" };
   }
 
@@ -67,6 +79,16 @@ export async function inviteProjectMember(input: {
     eventType: "project.member_invited",
     objectType: "project_invitation",
     description: `invited ${input.email} to "${input.project.name}" as ${input.role.replace("_", " ")}`,
+  });
+
+  await logAudit({
+    actorId: input.invitedBy,
+    organizationId: input.project.organization_id,
+    projectId: input.project.id,
+    action: "member.invited",
+    targetType: "project_invitation",
+    description: `Invited ${input.email} to "${input.project.name}" as ${input.role}`,
+    metadata: { role: input.role, email: input.email },
   });
 
   return { status: "invited" };
@@ -119,6 +141,17 @@ export async function updateMemberRole(input: {
     description: `changed ${input.memberName}'s role on "${input.project.name}" to ${input.role.replace("_", " ")}`,
     metadata: { role: input.role },
   });
+
+  await logAudit({
+    actorId: input.actorId,
+    organizationId: input.project.organization_id,
+    projectId: input.project.id,
+    action: "member.role_changed",
+    targetType: "project_member",
+    targetId: input.memberUserId,
+    description: `Changed ${input.memberName}'s role on "${input.project.name}" to ${input.role}`,
+    metadata: { role: input.role },
+  });
 }
 
 export async function removeMember(input: {
@@ -143,6 +176,16 @@ export async function removeMember(input: {
     objectType: "project_member",
     objectId: input.memberUserId,
     description: `removed ${input.memberName} from "${input.project.name}"`,
+  });
+
+  await logAudit({
+    actorId: input.actorId,
+    organizationId: input.project.organization_id,
+    projectId: input.project.id,
+    action: "member.removed",
+    targetType: "project_member",
+    targetId: input.memberUserId,
+    description: `Removed ${input.memberName} from "${input.project.name}"`,
   });
 }
 

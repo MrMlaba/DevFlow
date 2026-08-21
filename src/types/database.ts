@@ -437,6 +437,49 @@ export interface Database {
           },
         ];
       };
+      audit_log: {
+        Row: {
+          id: string;
+          actor_id: string | null;
+          organization_id: string | null;
+          project_id: string | null;
+          action: string;
+          target_type: string;
+          target_id: string | null;
+          description: string;
+          metadata: Record<string, unknown>;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["audit_log"]["Row"]> & {
+          action: string;
+          target_type: string;
+          description: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["audit_log"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "audit_log_organization_id_fkey";
+            columns: ["organization_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "audit_log_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

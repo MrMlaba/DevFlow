@@ -1,10 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
-import { createCommentAction, getCommentsAction } from "@/features/comments/actions";
+import {
+  createCommentAction,
+  deleteCommentAction,
+  getCommentsAction,
+} from "@/features/comments/actions";
 import { initialFormState } from "@/lib/form-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SubmitButton } from "@/components/submit-button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,6 +31,7 @@ export function CommentThread({
   const formRef = useRef<HTMLFormElement>(null);
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [state, setState] = useState(initialFormState);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +53,20 @@ export function CommentThread({
     }
   }
 
+  async function onDelete(commentId: string) {
+    setDeletingId(commentId);
+    try {
+      await deleteCommentAction({ commentId, projectId, commentableType });
+      setComments((prev) => prev && prev.filter((c) => c.id !== commentId));
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Couldn't delete comment.",
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-medium">
@@ -57,7 +79,7 @@ export function CommentThread({
       ) : (
         <div className="space-y-4">
           {comments.map((comment) => (
-            <div key={comment.id} className="flex gap-3">
+            <div key={comment.id} className="group flex gap-3">
               <Avatar className="size-8 shrink-0">
                 <AvatarImage src={comment.author.avatar_url ?? undefined} alt="" />
                 <AvatarFallback className="text-xs">
@@ -75,6 +97,16 @@ export function CommentThread({
                 </div>
                 <p className="text-sm whitespace-pre-wrap">{comment.body}</p>
               </div>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Delete comment"
+                disabled={deletingId === comment.id}
+                className="opacity-0 group-hover:opacity-100"
+                onClick={() => onDelete(comment.id)}
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
             </div>
           ))}
           {comments.length === 0 && (

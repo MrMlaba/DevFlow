@@ -74,8 +74,15 @@ export async function deleteCommentAction(input: {
   projectId: string;
   commentableType: "task" | "issue";
 }) {
-  await requireUser();
-  await deleteCommentService(input.commentId);
+  const user = await requireUser();
+  const project = await getProjectById(input.projectId);
+  if (!project) throw new Error("Project not found.");
+
+  await deleteCommentService({
+    commentId: input.commentId,
+    project,
+    actorId: user.id,
+  });
 
   const basePath =
     input.commentableType === "task"

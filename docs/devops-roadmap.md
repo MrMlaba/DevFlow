@@ -174,12 +174,64 @@ required, same "run this SQL" workflow as Phase 1's schema.
 changed shape, only the UI on top of it. Attachments and linked issues use
 the RBAC model unchanged (`task:update` permission gates both).
 
-## ⬜ Phase 3 - Activity and audit system
+## ✅ Phase 3 - Activity and audit system
 
-Filtering (by user/event type/project/date) on top of Phase 1's activity
-feed, plus a separate security-sensitive audit log (logins, permission/
-role changes, membership changes, deployment actions, deletions) distinct
-from the general activity feed.
+**Problem it solves:** the Phase 1 activity feed answers "what happened,"
+but has no way to narrow that down ("what did *this person* do," "show me
+just role changes," "what happened last week"), and has no concept of
+"security-sensitive" at all - a task rename and a permission change look
+the same in the feed.
+
+**Why DevFlow needs it:** an org growing past a handful of people needs to
+be able to filter the noise, and an administrator needs a record of
+security-relevant actions that regular project members can't see or
+tamper with, distinct from the general "what's happening on my project"
+feed.
+
+**How it works:**
+
+- **Activity feed filtering** (`/activity`, and project overview's feed):
+  by user, event type, project, and date range, all server-rendered via a
+  plain GET `<form>` and URL search params - no client JS needed, and the
+  filtered URL is shareable/bookmarkable. `src/services/activity.ts`'s
+  `listActivity()` already supported every one of these filters from
+  Phase 1; only the UI was missing.
+- **A second, distinct event log**: `audit_log`
+  (`database/migrations/0009_audit_log.sql`), populated by
+  `src/services/audit.ts`'s `logAudit()`. It only records the categories
+  the spec calls out as security-sensitive - login, password changes,
+  project membership changes, role changes, and deletions (tasks, issues,
+  comments) - not every mutation. See
+  [`docs/database.md`](./database.md#activity-feed-vs-audit-log) for the
+  full comparison with `activity_events`.
+- **Visibility is asymmetric by design**: org admins can read every
+  org/project-scoped audit entry; every user can read their own
+  account-level entries (their own login history) but not anyone else's -
+  enforced by RLS, not application code. View it at Settings → Audit log.
+- Closed a small pre-existing gap while wiring this up: comment deletion
+  had a working Server Action and RLS policy but no delete button in the
+  UI. Added one (visible on hover, in `CommentThread`), and made
+  `deleteComment` throw a clear error instead of silently no-op'ing when
+  RLS denies it - the kind of thing that's easy to miss until you're
+  looking for every place a deletion needs to be audited.
+
+**How it's configured:** one migration (`0009_audit_log.sql`) adds the
+table and its RLS policies - same workflow as every migration so far.
+
+**How it integrates:** `logAudit()` calls sit inside the same service
+functions that already call `logActivity()` (`services/members.ts`,
+`services/tasks.ts`, `services/issues.ts`, `services/comments.ts`), plus
+two new call sites in `features/auth/actions.ts` for login and password
+changes. Nothing about the RBAC model changed - the audit log observes the
+same actions the permission matrix already gates.
+
+**What was learned:** deployment actions and environment changes are
+listed in the spec's audit categories, but there's nothing real to audit
+there yet (Phase 10) - logging fake deployment audit entries would
+contradict the "never expose mock data as real" rule that's held since
+Phase 1's preview-data banners. Better to log nothing for a category than
+log something fabricated; Phase 10 adds those audit entries alongside the
+real deployment feature.
 
 ## ⬜ Phase 4 - GitHub integration
 

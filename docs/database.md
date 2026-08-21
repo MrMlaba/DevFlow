@@ -44,6 +44,7 @@ erDiagram
 | `comments`                   | Polymorphic: attached to a `task` or an `issue` via `commentable_type`/`commentable_id`. |
 | `activity_events`             | Append-only feed. Every mutating action writes one row here (see below). |
 | `task_attachments`             | Metadata for files attached to a task (Phase 2). The actual file bytes live in the private `task-attachments` Storage bucket. |
+| `audit_log`                      | Security-sensitive audit trail (Phase 3): logins, role/membership changes, deletions. See "Activity feed vs. audit log" below. |
 
 Migrations live in [`database/migrations/`](../database/migrations/),
 numbered and applied in order. Each file is commented inline with what it
@@ -104,6 +105,24 @@ triggering RLS recursion on those same tables.
 the project Activity page (Phase 1/3) and, later, the audit log and AI
 assistant's data source. Rows are append-only - there's no UPDATE or
 DELETE policy - so the feed can't be edited after the fact.
+
+## Activity feed vs. audit log
+
+Phase 3 adds a second, distinct event log alongside `activity_events`:
+
+| | `activity_events` | `audit_log` |
+| - | - | - |
+| Purpose | Product feature - "what happened on this project" | Security/compliance record - "who did what, security-wise" |
+| Visible to | Any project member (for that project's events) | Organization administrators only (org-admin scoped rows), plus each user for their own account-level entries (login, password change) |
+| Populated by | Every mutating service function | Only login, password changes, role/membership changes, and deletions (`src/services/audit.ts`'s `logAudit()`) |
+| Scope | Always tied to a project or organization | Project/org-scoped rows, or `organization_id: null` for account-level events (a user's own login history isn't org-scoped) |
+
+Both are append-only (no UPDATE/DELETE policy) and both are best-effort:
+a failure writing either log is caught and logged to the server console
+rather than failing the action it's attached to - the primary action
+(deleting a task, changing a role) should never fail because logging did.
+View the audit log at Settings → Audit log (org admins only), with
+filtering by user, action, and date.
 
 ## File storage (task attachments)
 

@@ -15,6 +15,7 @@ import {
 import { fromZodError, type FormState } from "@/lib/form-state";
 import { redeemInvitationsForEmail } from "@/services/members";
 import { requireUser } from "@/services/auth";
+import { logAudit } from "@/services/audit";
 
 export async function signUp(
   _prevState: FormState,
@@ -68,7 +69,7 @@ export async function signIn(
   if (!parsed.success) return fromZodError(parsed.error);
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
     password: parsed.data.password,
   });
@@ -76,6 +77,14 @@ export async function signIn(
   if (error) {
     return { status: "error", message: "Incorrect email or password." };
   }
+
+  await logAudit({
+    actorId: data.user.id,
+    action: "auth.login",
+    targetType: "profile",
+    targetId: data.user.id,
+    description: `${parsed.data.email} signed in`,
+  });
 
   const redirectTo = formData.get("redirect");
   redirect(typeof redirectTo === "string" && redirectTo ? redirectTo : "/overview");
@@ -121,11 +130,21 @@ export async function updatePassword(
   if (!parsed.success) return fromZodError(parsed.error);
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.updateUser({
+  const { data, error } = await supabase.auth.updateUser({
     password: parsed.data.password,
   });
 
   if (error) return { status: "error", message: error.message };
+
+  if (data.user) {
+    await logAudit({
+      actorId: data.user.id,
+      action: "auth.password_changed",
+      targetType: "profile",
+      targetId: data.user.id,
+      description: `${data.user.email} changed their password`,
+    });
+  }
 
   redirect("/overview");
 }

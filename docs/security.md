@@ -1,8 +1,7 @@
 # Security
 
-This document covers what's implemented today (Phase 1). DevSecOps
-tooling (Trivy, Semgrep, Gitleaks, Dependabot) lands in Phase 8; a
-dedicated security-audit log lands in Phase 3. See
+This document covers what's implemented today (Phases 1-3). DevSecOps
+tooling (Trivy, Semgrep, Gitleaks, Dependabot) lands in Phase 8. See
 [`docs/devops-roadmap.md`](./devops-roadmap.md) for the full plan.
 
 ## Authorization: row-level security is the real boundary
@@ -66,6 +65,18 @@ that's the whole point of keeping this key out of the request path.
   accounts created by `database/seed/seed.ts`, never used outside your own
   machine.
 
+## Audit log
+
+`src/services/audit.ts`'s `logAudit()` writes to a dedicated `audit_log`
+table for security-sensitive actions specifically: login, password
+changes, project membership changes, role changes, and deletions (tasks,
+issues, comments). It's distinct from the general activity feed
+(`activity_events`) - see
+[`docs/database.md`](./database.md#activity-feed-vs-audit-log) for the
+full comparison. Only organization administrators can read org/project-
+scoped entries; every user can read their own account-level entries
+(login, password change). View it at Settings → Audit log.
+
 ## Input validation
 
 Every Server Action validates its input with a zod schema
@@ -81,8 +92,6 @@ mistakes DevFlow's current state for production-hardened:
 
 - **Rate limiting** on auth endpoints (login/register/password-reset) -
   planned for Phase 20 (Production Hardening).
-- **Security-sensitive audit log** (login events, permission/role changes,
-  deletions) distinct from the general activity feed - Phase 3.
 - **Automated dependency/secret/container scanning** (Dependabot, Gitleaks,
   Trivy, Semgrep) - Phase 8.
 - **CSRF**: Next.js Server Actions include built-in origin checking, so
