@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SubmitButton } from "@/components/submit-button";
 import { FieldError } from "@/components/field-error";
-import { slugify } from "@/lib/slug";
+import { slugify, slugifyLive } from "@/lib/slug";
 import { Plus } from "lucide-react";
 
 export function CreateProjectDialog({ organizationId }: { organizationId: string }) {
@@ -68,7 +68,7 @@ export function CreateProjectDialog({ organizationId }: { organizationId: string
               value={slug}
               onChange={(e) => {
                 setSlugTouched(true);
-                setSlug(slugify(e.target.value));
+                setSlug(slugifyLive(e.target.value));
               }}
               placeholder="student-portal"
             />

@@ -65,10 +65,37 @@ npm run dev
 | `npm run lint`               | ESLint                                              |
 | `npm run type-check`          | `tsc --noEmit`                                       |
 | `npm run db:seed`              | Populate demo data (see above)                       |
+| `npm test`                   | Run unit/component tests (Jest + React Testing Library) |
+| `npm run test:watch`             | Unit tests in watch mode                              |
+| `npm run test:e2e`              | Run the Playwright E2E suite                          |
+| `npm run test:e2e:ui`             | E2E suite in Playwright's UI mode                      |
 
-`npm test` / `npm run test:e2e` land in Phase 5 (see
-[`docs/devops-roadmap.md`](./devops-roadmap.md)) - there's nothing to test
-against yet beyond what `build`'s type-checking already catches.
+## Testing
+
+**Unit/component tests** (`tests/unit/`) don't need Supabase or a running
+server - `npm test` runs them directly against validation schemas, the
+permission matrix, and mocked components/actions.
+
+**E2E tests** (`tests/e2e/`, Playwright) run against a real, running app
+and a real Supabase project - `npm run test:e2e` starts `npm run dev`
+automatically if nothing's already listening on `localhost:3000` (or
+reuses a dev server you already have running). They need:
+
+- The database seeded (`npm run db:seed`) - tests log in as the demo
+  accounts it creates.
+- `SEED_USER_PASSWORD` set in `.env.local` (the password those demo
+  accounts were created with).
+
+Tests run serially (`workers: 1` in `playwright.config.ts`) - `next dev`
+compiles routes on demand, and parallel workers hitting fresh routes at
+once queues up compilation and produces real timeouts, not just
+slowness. The registration test hits Supabase's real signup endpoint and
+will self-skip if that account's email rate limit has been used up
+(check the test output for "email rate limit exceeded") - that's a
+Supabase quota, not an app failure.
+
+See [`docs/devops-roadmap.md`](./devops-roadmap.md) for what each test
+file covers and what E2E testing caught that unit tests couldn't.
 
 ## Project conventions
 

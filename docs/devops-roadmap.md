@@ -317,11 +317,106 @@ feed as task moves and comments, filterable the same way (Phase 3).
   double-checking the client/policy pairing by hand for every new write
   path, especially ones added late while a feature is still taking shape.
 
-## ⬜ Phase 5 - Testing
+## ✅ Phase 5 - Testing
 
-Jest + React Testing Library (unit), Playwright (e2e). Coverage for auth,
-project/task creation, permissions, webhook processing, PRs, activity
-events. `npm test` and `npm run test:e2e`.
+**Problem it solves:** every phase so far was verified by hand against the
+live Supabase project. That doesn't scale - there was no way to know a
+change to, say, the permission matrix or the webhook handler hadn't
+silently broken something else, short of re-clicking through the whole
+app after every change.
+
+**Why DevFlow needs it:** Phase 7 (CI) needs something to actually run.
+Automated tests are also what let later phases (Docker, Terraform,
+Kubernetes) change how the app is *built and deployed* with confidence
+that its behavior hasn't changed.
+
+**How it works:**
+
+- **Unit/component tests** (`tests/unit/`, Jest + React Testing Library):
+  validation schemas (auth, project, task), the permission matrix
+  (`config/permissions.ts`), GitHub webhook signature verification,
+  `lib/utils.ts`/`config/status.ts`, and RTL component tests for the
+  login/register forms and the create-project dialog (mocking the Server
+  Action so these stay pure UI tests). A separate Route Handler test for
+  `POST /api/webhooks/github` uses a hand-built fake Supabase admin client
+  (mimicking `.from().select().eq().maybeSingle()` /
+  `.upsert()`/`.insert()`) and *real* HMAC-SHA256 signatures, covering
+  invalid signatures, unknown repos, `ping`, `push` (commit upsert +
+  activity event), and a merged `pull_request` (PR upsert + merge activity
+  event).
+- **E2E tests** (`tests/e2e/`, Playwright + Chromium): log in as the
+  seeded demo accounts (`database/seed/seed.ts`) rather than registering
+  fresh users for most flows, since confirming a real registration needs a
+  real inbox. Covers: authentication (redirect-when-signed-out, register,
+  wrong password, login, logout), project creation (org admins only, per
+  RLS), task creation and assignment, the resulting activity event,
+  permissions (a reviewer can't manage members on a project a project
+  owner can), and a smoke test that the Pull Requests page renders.
+- Tests run **serially** (`workers: 1`) against `next dev`. Parallel
+  workers hitting distinct routes for the first time (a fresh project ID
+  every run) queue up Turbopack's on-demand compilation and produced real
+  timeouts, not just slowness - serial execution removed the flakiness
+  entirely for a suite this size.
+
+**How it's configured:** `jest.config.ts` (via `next/jest`, `jsdom`,
+`server-only` mapped to an empty mock - see "what was learned" below) and
+`playwright.config.ts` (loads `.env.local` itself, since Playwright runs
+as a plain Node process outside Next's env loading; auto-starts
+`npm run dev` if nothing's already listening on port 3000). `npm test` /
+`npm run test:watch` for unit tests, `npm run test:e2e` /
+`npm run test:e2e:ui` for E2E.
+
+**How it integrates:** tests exercise the exact same `services/*.ts`,
+Server Actions, and RLS policies every prior phase built - nothing was
+restructured to make it testable. The E2E suite runs against the same
+live Supabase project the app itself uses (there's no separate test
+database yet); it creates real rows (timestamped names avoid collisions
+across runs) rather than mocking Supabase.
+
+**What was learned:**
+
+- The `server-only` package throws when it detects a `window` global,
+  which jsdom provides - Jest's own Next.js integration docs recommend
+  mapping it to an empty module via `moduleNameMapper` rather than
+  disabling it another way.
+- Zod v4 validates UUIDs against the actual RFC4122 shape (the version and
+  variant nibbles), stricter than v3's format check - test fixtures like
+  `"11111111-1111-1111-1111-111111111111"` fail validation because the
+  4th group doesn't start with 8/9/a/b; needed valid-looking UUIDs
+  (`"...-4111-8111-..."`) in every test fixture.
+- E2E testing caught two real bugs unit tests couldn't have, both only
+  visible in a real browser against a real backend:
+  - **Manual slug editing was silently corrupting input.** The slug
+    field's `onChange` re-ran the same `slugify()` used for
+    auto-generating a slug from the project name - which strips trailing
+    hyphens. Re-running that on every keystroke ate the hyphen before the
+    next character arrived, turning "custom-slug" into "customslug" as
+    you typed it. Fixed with a separate `slugifyLive()` (no trailing-
+    hyphen stripping) for manual edits, keeping the full `slugify()` only
+    for the auto-generate-from-name path.
+  - **The account menu crashed the page on open.** `DropdownMenuLabel`
+    used Base UI's `Menu.GroupLabel` directly, which throws
+    (`MenuGroupContext is missing`) unless it's inside a `Menu.Group` -
+    every call site in the app used it standalone (matching the
+    Radix-based shadcn/ui API this was adapted from, where a label
+    doesn't need a group). A component test mocking the dropdown wouldn't
+    have caught this; only a real click in a real browser triggered Base
+    UI's runtime check. Fixed once, in the shared component, by wrapping
+    `GroupLabel` in an implicit `Menu.Group` so every caller keeps working
+    unchanged.
+- Locators need to account for real page structure, not just the
+  element being tested: a project card's accessible name includes its
+  whole visible text (including its "N members" footer), so
+  `getByRole("link", { name: "Members" })` matched project cards too, not
+  just the intended tab. Scoping by URL/href sidestepped it.
+- Supabase's own signup endpoint rejects `@devflow.dev` addresses
+  (`email_address_invalid`) even though the seeded demo accounts use that
+  domain - the seed script creates them via the *admin* API
+  (`auth.admin.createUser`), which skips the deliverability check that
+  the public `signUp()` endpoint runs. A real E2E registration test needs
+  a domain with real MX records.
+
+## ⬜ Phase 6 - Docker
 
 ## ⬜ Phase 6 - Docker
 
