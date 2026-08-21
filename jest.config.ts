@@ -23,6 +23,12 @@ const config: Config = {
     "<rootDir>/.next/",
     "<rootDir>/tests/e2e/",
   ],
+  // Beyond just excluding test files, keep .next/ out of Jest's module
+  // map entirely - a production build's .next/standalone/package.json
+  // (Phase 6's output: "standalone") has the same "name" as the repo's
+  // own package.json, which jest-haste-map otherwise reports as a
+  // naming collision.
+  modulePathIgnorePatterns: ["<rootDir>/.next/"],
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",
     "!src/**/*.d.ts",

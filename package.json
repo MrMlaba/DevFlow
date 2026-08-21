@@ -12,7 +12,10 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "docker:build": "docker compose --env-file .env.local build",
+    "docker:up": "docker compose --env-file .env.local up",
+    "docker:down": "docker compose down"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

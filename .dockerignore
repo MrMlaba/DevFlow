@@ -1,0 +1,20 @@
+node_modules
+.next
+.git
+.github
+
+# env files - real secrets are injected via `docker run -e` / compose
+# `environment`, never baked into the image
+.env
+.env*.local
+
+# not needed at runtime
+*.md
+docs
+tests
+test-results
+playwright-report
+coverage
+.vscode
+
+npm-debug.log*

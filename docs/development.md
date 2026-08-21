@@ -97,6 +97,26 @@ Supabase quota, not an app failure.
 See [`docs/devops-roadmap.md`](./devops-roadmap.md) for what each test
 file covers and what E2E testing caught that unit tests couldn't.
 
+## Running with Docker
+
+Builds and runs the app in a container against your existing cloud
+Supabase project (the same `.env.local` `npm run dev` uses) - see
+[`docs/devops-roadmap.md`](./devops-roadmap.md) (Phase 6) for why there's
+no local Postgres/Redis container.
+
+```bash
+npm run docker:build   # docker compose build
+npm run docker:up      # docker compose up - http://localhost:3000
+npm run docker:down    # stop and remove the container
+```
+
+Or with `docker` directly, without compose:
+
+```bash
+docker build -t devflow .
+docker run -p 3000:3000 --env-file .env.local devflow
+```
+
 ## Project conventions
 
 - **Data access goes through `src/services/*.ts`**, never directly through

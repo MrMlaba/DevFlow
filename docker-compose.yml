@@ -1,0 +1,31 @@
+# Runs DevFlow in a container against your existing cloud Supabase
+# project - the same one `npm run dev` already uses. No local
+# Postgres/Redis container: DevFlow's Postgres *is* Supabase (Auth,
+# row-level security, and Storage all come from the same hosted project;
+# a bare `postgres` image wouldn't have any of that), and nothing in the
+# app uses Redis yet - adding an unused container would be exactly the
+# "infrastructure the UI doesn't actually use" this project has avoided
+# since Phase 1. See docs/devops-roadmap.md (Phase 6) for the full reasoning.
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Only matters once a Client Component reads these (see the
+        # Dockerfile) - harmless to leave unset today. Pass
+        # `--env-file .env.local` on `docker compose build` to populate
+        # them from your existing local config.
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

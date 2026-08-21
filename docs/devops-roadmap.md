@@ -416,12 +416,108 @@ across runs) rather than mocking Supabase.
   the public `signUp()` endpoint runs. A real E2E registration test needs
   a domain with real MX records.
 
-## ⬜ Phase 6 - Docker
+## ✅ Phase 6 - Docker
 
-## ⬜ Phase 6 - Docker
+**Problem it solves:** every phase so far only had one way to run DevFlow
+- `npm run dev`/`npm run start` on a machine with Node 20 installed. That's
+fine for local development, but it's not something Phase 7's CI can build
+once and run anywhere, and it's not something Phase 9's registry has
+anything to push.
 
-`Dockerfile` (multi-stage), `docker-compose.yml` (app + Postgres/Redis
-locally), `.dockerignore`, health checks.
+**Why DevFlow needs it:** a container is the deployable unit every later
+phase builds on - Phase 7 builds and tests the image, Phase 9 tags and
+pushes it, Phase 10-14 run it as the actual production workload.
+Packaging it now, while there's still only one way to run the app,
+is simpler than retrofitting it once Docker-specific concerns
+(build-time vs. runtime env vars, health checks) are tangled up with
+three phases' worth of other changes.
+
+**How it works:**
+
+- **Multi-stage `Dockerfile`** (repo root, Docker convention): a `deps`
+  stage installs dependencies once and caches that layer separately from
+  source changes; a `builder` stage runs `npm run build`; a `runner`
+  stage copies only the traced output `next.config.ts`'s new
+  `output: "standalone"` produces (`.next/standalone`, `.next/static`,
+  `public`) into a fresh `node:20-alpine` image, running as a non-root
+  user. No source, no dev dependencies, no full `node_modules` in the
+  final image.
+- **A liveness endpoint**, `/api/health` (`src/app/api/health/route.ts`):
+  returns `200 {"status":"ok"}` immediately - deliberately cheap ("is the
+  process up," not "can it reach Supabase"), so Docker's `HEALTHCHECK`
+  (and later Kubernetes probes, Phase 13/14) can poll it often without
+  false-flagging the container unhealthy during a transient Supabase
+  blip that isn't this process's fault. `proxy.ts` already treats
+  `/api/*` as public, so the check doesn't need auth.
+- **`docker-compose.yml`** runs the one `app` service against the same
+  cloud Supabase project `npm run dev` already uses (`env_file:
+  .env.local`) - **no local Postgres or Redis container.** DevFlow's
+  Postgres *is* Supabase: Auth, row-level security, and Storage all come
+  from the same hosted project, and a bare `postgres` image the app isn't
+  actually configured to talk to would be exactly the "infrastructure the
+  UI doesn't actually use" problem this project has avoided since Phase
+  1's mock-data banners and Phase 3's audit-log scoping. Redis isn't
+  added either - nothing in the app does caching or background job
+  processing yet, so there's nothing for it to back (see
+  `docs/architecture.md`'s "not until a concrete problem requires it"
+  principle). Both get added in whichever future phase introduces a real
+  consumer, not preemptively here.
+- **`.dockerignore`** keeps `node_modules`, `.git`, `.env*`, tests, and
+  docs out of the build context - real secrets are injected via `docker
+  run -e` / compose's `env_file`, never baked into the image.
+
+**How it's configured:** `npm run docker:build` / `docker:up` /
+`docker:down` (thin wrappers around `docker compose`, using
+`--env-file .env.local` so compose's variable substitution - separate
+from the `env_file:` that populates the *container's* runtime
+environment - can see it too), or `docker build`/`docker run` directly.
+See [`docs/development.md`](./development.md#running-with-docker).
+
+**How it integrates:** the image runs the exact same Next.js app every
+prior phase built - Server Actions, RLS-backed Supabase queries, the
+GitHub webhook route - unchanged. `NEXT_PUBLIC_*` variables are declared
+as Dockerfile `ARG`s (inlined into the client bundle at build time, the
+way Next.js requires) even though nothing in the app reads them from a
+Client Component yet (everything's Server Components/Actions so far) -
+so that stays correct once something does, without another round of
+Docker changes.
+
+**What was learned:**
+
+- `output: "standalone"` needed verifying beyond just `next build`
+  succeeding - Docker isn't installed on this machine, so the real check
+  was copying `public`/`.next/static` into `.next/standalone` by hand and
+  running `node server.js` directly (exactly what the Dockerfile's runner
+  stage does), then curling `/api/health`, `/login`, and `/` against it.
+  All three responded correctly, which is the same artifact Docker would
+  produce - "the build succeeds" and "the server actually serves traffic"
+  are different claims, and only the second one is what running in
+  production means.
+- `next build` succeeds with **zero** environment variables present (no
+  `.env.local` at all) - verified directly by moving it aside and
+  rebuilding. Nothing in this app reads a Supabase env var during static
+  generation (every route touching Supabase is server-rendered on
+  demand, not prerendered) and no Client Component reads a
+  `NEXT_PUBLIC_*` value. That's what makes it safe for the Dockerfile's
+  build stage to not require secrets - but it's a property of *this
+  app's current code*, not of Next.js generally, and would stop being
+  true the moment a Client Component reads `env.supabaseUrl()`.
+- `output: "standalone"` copies a `package.json` into `.next/standalone`
+  with the same `"name"` as the repo's own - `jest-haste-map` scans that
+  by default and reports a "Haste module naming collision" warning any
+  time `.next/` exists when `npm test` runs (e.g., build-then-test in the
+  same session, or a CI job that does both). Jest's `testPathIgnorePatterns`
+  already excluded `.next/` from *test* discovery, but not from the
+  module map it builds regardless - fixed with a separate
+  `modulePathIgnorePatterns`.
+- Next.js's self-hosting guide flags `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`
+  as something that must stay consistent across instances, or requests
+  landing on different server processes fail with "Failed to find Server
+  Action" - not a problem for today's single-container Compose setup
+  (Next generates and bakes in one key per build, and every container
+  from that build shares it), but worth remembering once Phase 10+
+  actually runs multiple replicas or does rolling deploys across
+  separate image builds.
 
 ## ⬜ Phase 7 - CI with GitHub Actions
 
