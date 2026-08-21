@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Container, GitCommitHorizontal, Workflow } from "lucide-react";
+import { Check, Circle, Container, GitCommitHorizontal, Loader2, Workflow, X } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
@@ -7,18 +7,15 @@ import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { listUserProjects } from "@/services/projects";
-import { listVisibleContainerImages, listVisiblePipelineRuns } from "@/services/github";
+import {
+  listVisibleContainerImages,
+  listVisiblePipelineRuns,
+  type PipelineRun,
+} from "@/services/github";
 import { PIPELINE_STATUS_META } from "@/config/status";
-import { formatRelativeTime } from "@/lib/utils";
+import { cn, formatDuration, formatRelativeTime } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Pipelines" };
-
-const STAGE_TONE = {
-  success: "success",
-  failed: "danger",
-  running: "info",
-  pending: "neutral",
-} as const;
 
 export default async function PipelinesPage() {
   const projects = await listUserProjects();
@@ -43,46 +40,9 @@ export default async function PipelinesPage() {
           />
         ) : (
           <div className="space-y-3">
-            {runs.map((run) => {
-              const status = PIPELINE_STATUS_META[run.status];
-              return (
-                <Card key={run.id}>
-                  <CardContent className="space-y-3 pt-6">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <GitCommitHorizontal className="text-muted-foreground size-4" />
-                          <span className="font-mono text-xs">{run.commitSha}</span>
-                          <a
-                            href={run.htmlUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium hover:underline"
-                          >
-                            {run.commitMessage}
-                          </a>
-                        </div>
-                        <p className="text-muted-foreground mt-1 text-xs">
-                          {run.projectName} · {run.branch} · {run.author} · started{" "}
-                          {formatRelativeTime(run.startedAt)}
-                          {run.durationSeconds !== null && ` · ${run.durationSeconds}s`}
-                        </p>
-                      </div>
-                      <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
-                    </div>
-                    {run.stages.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {run.stages.map((stage) => (
-                          <StatusBadge key={stage.name} tone={STAGE_TONE[stage.status]}>
-                            {stage.name}
-                          </StatusBadge>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
+            {runs.map((run) => (
+              <PipelineRunCard key={run.id} run={run} />
+            ))}
           </div>
         )}
       </div>
@@ -124,6 +84,99 @@ export default async function PipelinesPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function PipelineRunCard({ run }: { run: PipelineRun }) {
+  const status = PIPELINE_STATUS_META[run.status];
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 pt-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm">
+            <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+            <span className="font-medium">
+              #{run.runNumber} · {run.branch}
+            </span>
+            <span className="text-muted-foreground">· {run.projectName}</span>
+          </div>
+          <div className="text-muted-foreground flex items-center gap-2 font-mono text-xs">
+            {run.durationSeconds !== null && <span>{formatDuration(run.durationSeconds)}</span>}
+            <span>{run.commitSha}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <a
+            href={run.htmlUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-sm hover:underline"
+          >
+            <GitCommitHorizontal className="text-muted-foreground size-4 shrink-0" />
+            {run.commitMessage}
+          </a>
+          <span className="text-muted-foreground text-xs">Triggered by {run.author}</span>
+        </div>
+
+        {run.stages.length > 0 && <PipelineStageFlow stages={run.stages} />}
+
+        <p className="text-muted-foreground text-xs">
+          started {formatRelativeTime(run.startedAt)}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+const STAGE_NODE_STYLES = {
+  success: "border-emerald-500 bg-emerald-500 text-white",
+  failed: "border-red-500 bg-red-500 text-white",
+  running: "border-primary bg-primary text-primary-foreground",
+  pending: "border-muted-foreground/30 bg-muted text-muted-foreground",
+} as const;
+
+const STAGE_LINE_STYLES = {
+  success: "bg-emerald-500",
+  failed: "bg-red-500",
+  running: "bg-primary",
+  pending: "bg-border",
+} as const;
+
+function PipelineStageFlow({ stages }: { stages: PipelineRun["stages"] }) {
+  return (
+    <div className="flex items-start">
+      {stages.map((stage, i) => (
+        <div key={stage.name} className="flex flex-1 items-start last:flex-none">
+          <div className="flex flex-col items-center gap-1.5">
+            <div
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-full border-2",
+                STAGE_NODE_STYLES[stage.status],
+              )}
+            >
+              {stage.status === "success" && <Check className="size-4" />}
+              {stage.status === "failed" && <X className="size-4" />}
+              {stage.status === "running" && <Loader2 className="size-4 animate-spin" />}
+              {stage.status === "pending" && <Circle className="size-2 fill-current" />}
+            </div>
+            <div className="text-center">
+              <p className="text-xs font-medium whitespace-nowrap">{stage.name}</p>
+              <p className="text-muted-foreground text-[10px] whitespace-nowrap">
+                {stage.durationSeconds !== null ? formatDuration(stage.durationSeconds) : "—"}
+              </p>
+            </div>
+          </div>
+          {i < stages.length - 1 && (
+            <div
+              className={cn("mt-4.5 h-0.5 flex-1", STAGE_LINE_STYLES[stage.status])}
+              aria-hidden
+            />
+          )}
+        </div>
+      ))}
     </div>
   );
 }

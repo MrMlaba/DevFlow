@@ -22,7 +22,15 @@ function run(overrides: Partial<GitHubWorkflowRun>): GitHubWorkflowRun {
 }
 
 function job(overrides: Partial<GitHubWorkflowJob>): GitHubWorkflowJob {
-  return { id: 1, name: "lint", status: "completed", conclusion: "success", ...overrides };
+  return {
+    id: 1,
+    name: "lint",
+    status: "completed",
+    conclusion: "success",
+    started_at: "2026-01-01T00:00:00Z",
+    completed_at: "2026-01-01T00:00:30Z",
+    ...overrides,
+  };
 }
 
 describe("runStatus", () => {

@@ -1,4 +1,4 @@
-import { cn, formatRelativeTime, initials } from "@/lib/utils";
+import { cn, formatDuration, formatRelativeTime, initials } from "@/lib/utils";
 import { slugify } from "@/lib/slug";
 
 describe("initials", () => {
@@ -44,6 +44,22 @@ describe("formatRelativeTime", () => {
     const result = formatRelativeTime(inTwoDays);
     expect(result).toMatch(/day/);
     expect(result).not.toMatch(/ago/);
+  });
+});
+
+describe("formatDuration", () => {
+  it("shows seconds only under a minute", () => {
+    expect(formatDuration(8)).toBe("8s");
+    expect(formatDuration(59)).toBe("59s");
+  });
+
+  it("shows minutes and seconds", () => {
+    expect(formatDuration(72)).toBe("1m 12s");
+    expect(formatDuration(226)).toBe("3m 46s");
+  });
+
+  it("drops the seconds when they're exactly zero", () => {
+    expect(formatDuration(120)).toBe("2m");
   });
 });
 

@@ -367,7 +367,15 @@ export interface PipelineRun {
   htmlUrl: string;
   startedAt: string;
   durationSeconds: number | null;
-  stages: { name: string; status: PipelineStageStatus }[];
+  stages: { name: string; status: PipelineStageStatus; durationSeconds: number | null }[];
+}
+
+function jobDurationSeconds(job: gh.GitHubWorkflowJob): number | null {
+  if (!job.started_at || !job.completed_at) return null;
+  return Math.max(
+    0,
+    Math.round((new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000),
+  );
 }
 
 export function runStatus(run: gh.GitHubWorkflowRun): PipelineRunStatus {
@@ -435,7 +443,11 @@ async function getPipelineRuns(
         htmlUrl: run.html_url,
         startedAt,
         durationSeconds,
-        stages: jobs.map((job) => ({ name: job.name, status: jobStatus(job) })),
+        stages: jobs.map((job) => ({
+          name: job.name,
+          status: jobStatus(job),
+          durationSeconds: jobDurationSeconds(job),
+        })),
       } satisfies PipelineRun;
     }),
   );

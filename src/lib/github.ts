@@ -302,6 +302,8 @@ export interface GitHubWorkflowJob {
   name: string;
   status: "queued" | "in_progress" | "completed" | "waiting" | string;
   conclusion: string | null;
+  started_at: string | null;
+  completed_at: string | null;
 }
 
 export async function listWorkflowRunJobs(

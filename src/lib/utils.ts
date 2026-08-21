@@ -35,3 +35,11 @@ export function formatRelativeTime(date: string | Date) {
   }
   return formatter.format(diffSeconds, "second");
 }
+
+/** 8 -> "8s", 72 -> "1m 12s", 226 -> "3m 46s" */
+export function formatDuration(seconds: number) {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds === 0 ? `${minutes}m` : `${minutes}m ${remainingSeconds}s`;
+}
