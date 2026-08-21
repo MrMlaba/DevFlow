@@ -33,6 +33,14 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # tsconfig.json's `include` covers .next/types/**/*.ts (Next's
+      # route-aware PageProps/LayoutProps/RouteContext helpers - see
+      # AGENTS.md and layout.tsx/login/page.tsx) - those don't exist until
+      # something generates them. `next build` does that as a side effect
+      # (which is why the build job doesn't need this), but a standalone
+      # `tsc --noEmit` in its own job doesn't run the app at all.
+      # `next typegen` generates just the types, without a full build.
+      - run: npx next typegen
       - run: npm run type-check
 
   unit-tests:
