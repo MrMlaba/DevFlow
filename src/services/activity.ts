@@ -1,7 +1,8 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
-import type { Tables } from "@/types/database";
+import type { Database, Tables } from "@/types/database";
 
 export type ActivityEvent = Tables<"activity_events"> & {
   actor: Pick<Tables<"profiles">, "id" | "full_name" | "email" | "avatar_url"> | null;
@@ -10,7 +11,8 @@ export type ActivityEvent = Tables<"activity_events"> & {
 export interface LogActivityInput {
   projectId?: string;
   organizationId?: string;
-  actorId: string;
+  /** Null/omitted for events with no DevFlow actor (e.g. a GitHub webhook). */
+  actorId?: string | null;
   eventType: string;
   objectType: string;
   objectId?: string;
@@ -21,15 +23,22 @@ export interface LogActivityInput {
 /**
  * Writes one row to activity_events. Called by every mutating service
  * function (create project, invite member, create task, ...) so the
- * activity feed and, eventually, the audit log (Phase 3) stay complete
- * without every caller having to remember to log anything.
+ * activity feed and audit log stay complete without every caller having
+ * to remember to log anything.
+ *
+ * Pass `client` when there's no DevFlow user session to read cookies from
+ * - e.g. a GitHub webhook handler, which authenticates via HMAC signature
+ * instead and must use the admin client (see src/lib/supabase/admin.ts).
  */
-export async function logActivity(input: LogActivityInput) {
-  const supabase = await createClient();
+export async function logActivity(
+  input: LogActivityInput,
+  client?: SupabaseClient<Database>,
+) {
+  const supabase = client ?? (await createClient());
   const { error } = await supabase.from("activity_events").insert({
     project_id: input.projectId ?? null,
     organization_id: input.organizationId ?? null,
-    actor_id: input.actorId,
+    actor_id: input.actorId ?? null,
     event_type: input.eventType,
     object_type: input.objectType,
     object_id: input.objectId ?? null,

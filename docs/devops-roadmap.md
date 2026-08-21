@@ -233,11 +233,89 @@ Phase 1's preview-data banners. Better to log nothing for a category than
 log something fabricated; Phase 10 adds those audit entries alongside the
 real deployment feature.
 
-## ⬜ Phase 4 - GitHub integration
+## ✅ Phase 4 - GitHub integration
 
-Connect a GitHub repo to a project via the GitHub API/OAuth/webhooks.
-Commits, branches, pull requests, issues, releases, contributors. Webhook
-events become activity events. PRs linkable to tasks.
+**Problem it solves:** every prior phase's data was entered by hand inside
+DevFlow. Real software development happens in Git/GitHub - without a
+connection to it, DevFlow can't reflect what's actually happening in a
+project's codebase.
+
+**Why DevFlow needs it:** this is the foundation Phases 7-10 (CI,
+security scanning, deployments) build on - pipelines run against commits,
+deployments ship a commit SHA, and none of that means anything without a
+connected repository first.
+
+**How it works:**
+
+- **GitHub OAuth App**, not a personal access token - a user clicks
+  "Connect GitHub" (Settings), goes through GitHub's real consent screen
+  (`repo read:user` scope), and DevFlow stores the resulting token
+  (`src/app/api/github/oauth/`). Connecting a *repository* to a *project*
+  is a separate step (any project admin with a connected account, from
+  that project's Settings tab) - one user's OAuth grant, once made, is
+  reusable for any repo they administer.
+- **Webhooks** for real-time sync: connecting a repo registers a webhook
+  (push, pull_request, issues, release events) with a per-repository
+  secret. `src/app/api/webhooks/github/route.ts` verifies the
+  HMAC-SHA256 signature, then upserts commits/PRs and writes an activity
+  event for the other event types.
+- **Manual "Sync now"** as the primary, always-available path: it doesn't
+  need a public URL, so it's what actually gets tested during local
+  development. Webhooks work automatically once DevFlow is deployed
+  (Phase 6+); locally, GitHub simply can't reach `http://localhost`
+  unless you run a tunnel.
+- **Commits and Pull Requests get dedicated pages** (project-scoped tabs,
+  plus a cross-project Pull Requests page replacing Phase 1's mock one -
+  the first nav item to graduate from "Preview data" to real). Branches,
+  contributors, releases, and GitHub's own issues are fetched live from
+  the API for the project Overview tab instead of persisted - they don't
+  need webhook-driven sync or a dedicated page per the spec.
+- **Pull requests link to tasks** using the `linked_task_id` column
+  (mirrors how issues already link to tasks since Phase 2), editable from
+  the Pull Requests table or from a task's detail view, which now shows
+  its real linked PRs instead of the Phase 2 placeholder.
+- CI/security/deployment status per pull request are explicitly *not*
+  shown yet - that data doesn't exist until Phases 7/8/10, and showing a
+  placeholder status next to a real PR would be worse than not showing
+  it, since it'd look like real data attached to something real.
+
+**How it's configured:** one migration
+(`0010_github_integration.sql`) plus two new environment variables
+(`GITHUB_OAUTH_CLIENT_ID`/`SECRET`) from a GitHub OAuth App the user
+registers themselves (same pattern as the Supabase project in Phase 1 -
+an external account/app DevFlow can't provision on someone's behalf).
+
+**How it integrates:** webhook and sync events write to the same
+`activity_events` table every other phase already writes to
+(`src/services/activity.ts`), so GitHub activity shows up in the same
+feed as task moves and comments, filterable the same way (Phase 3).
+
+**What was learned:**
+
+- `lucide-react` (currently 1.33.0 in this project - a major-version jump
+  from the 0.x series in training data) dropped brand/logo icons like
+  `Github` entirely. Caught by `next build` failing on a missing export,
+  not by lint or types - worth grepping a package's actual exports
+  (`node -e "console.log(Object.keys(require('lucide-react')))"`) rather
+  than assuming an icon name from memory when a major version is newer
+  than expected.
+- Found and fixed three open-redirect gaps while building the OAuth
+  callback: every `?next=`/`?redirect=` parameter (email confirmation,
+  password reset, the new GitHub OAuth callback, and even the existing
+  `/login?redirect=`) needs validation that it's a same-site relative
+  path before use, or a crafted link can send a user who legitimately
+  authenticates off to an attacker's site afterward. Worth an explicit
+  pass for this pattern any time a new "redirect back to X" flow is
+  added, since it's easy to add the third instance of a bug the first two
+  already had.
+- Wrote the migration's own comment saying repo connect/disconnect writes
+  "happen through the admin client" - then implemented the actual
+  service functions using the regular session client, which has no
+  INSERT/DELETE policy for that table. `npm run build` doesn't catch a
+  mismatch between a migration's RLS policies and which Supabase client a
+  service function uses - that only surfaces at request time. Worth
+  double-checking the client/policy pairing by hand for every new write
+  path, especially ones added late while a feature is still taking shape.
 
 ## ⬜ Phase 5 - Testing
 

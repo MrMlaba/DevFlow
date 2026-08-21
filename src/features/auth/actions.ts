@@ -87,7 +87,15 @@ export async function signIn(
   });
 
   const redirectTo = formData.get("redirect");
-  redirect(typeof redirectTo === "string" && redirectTo ? redirectTo : "/overview");
+  // Only allow same-site relative paths - guards against an open redirect
+  // via a crafted /login?redirect=https://evil.com link.
+  const destination =
+    typeof redirectTo === "string" &&
+    redirectTo.startsWith("/") &&
+    !redirectTo.startsWith("//")
+      ? redirectTo
+      : "/overview";
+  redirect(destination);
 }
 
 export async function signOut() {

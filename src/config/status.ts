@@ -78,6 +78,12 @@ export const INCIDENT_SEVERITY_META: Record<string, { label: string; tone: Badge
   critical: { label: "Critical", tone: "danger" },
 };
 
+export function pullRequestStatusMeta(state: string, isMerged: boolean) {
+  if (isMerged) return { label: "Merged", tone: "info" as const };
+  if (state === "closed") return { label: "Closed", tone: "neutral" as const };
+  return { label: "Open", tone: "success" as const };
+}
+
 export const HEALTH_STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
   healthy: { label: "Healthy", tone: "success" },
   degraded: { label: "Degraded", tone: "warning" },

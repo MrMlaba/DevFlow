@@ -5,8 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ActivityFeed } from "@/features/activity/components/activity-feed";
+import { RepositorySnapshot } from "@/features/github/components/repository-snapshot";
 import { getProjectById, getProjectStats } from "@/services/projects";
 import { listActivity } from "@/services/activity";
+import {
+  getGitHubAccount,
+  getProjectRepository,
+  getRepositorySnapshot,
+} from "@/services/github";
 import { notFound } from "next/navigation";
 
 export const metadata: Metadata = { title: "Project overview" };
@@ -20,10 +26,19 @@ export default async function ProjectOverviewPage({
   const project = await getProjectById(projectId);
   if (!project) notFound();
 
-  const [stats, activity] = await Promise.all([
+  const [stats, activity, repository] = await Promise.all([
     getProjectStats(projectId),
     listActivity({ projectId, limit: 10 }),
+    getProjectRepository(projectId),
   ]);
+
+  const repoSnapshot = repository
+    ? await getGitHubAccount(repository.connected_by).then((account) =>
+        account
+          ? getRepositorySnapshot(repository, account.access_token)
+          : null,
+      )
+    : null;
 
   const progress =
     stats.tasksTotal === 0
@@ -96,9 +111,14 @@ export default async function ProjectOverviewPage({
         </Card>
       </div>
 
-      <div className="space-y-4">
-        <h2 className="font-medium">Recent activity</h2>
-        <ActivityFeed events={activity} />
+      <div className="space-y-6">
+        {repository && repoSnapshot && (
+          <RepositorySnapshot repository={repository} snapshot={repoSnapshot} />
+        )}
+        <div className="space-y-4">
+          <h2 className="font-medium">Recent activity</h2>
+          <ActivityFeed events={activity} />
+        </div>
       </div>
     </div>
   );

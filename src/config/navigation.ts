@@ -39,7 +39,7 @@ export const NAV_ITEMS: NavItem[] = [
     title: "Pull Requests",
     href: "/pull-requests",
     icon: GitPullRequest,
-    live: false,
+    live: true,
   },
   { title: "Pipelines", href: "/pipelines", icon: Workflow, live: false },
   { title: "Deployments", href: "/deployments", icon: Rocket, live: false },

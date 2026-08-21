@@ -480,6 +480,166 @@ export interface Database {
           },
         ];
       };
+      github_accounts: {
+        Row: {
+          id: string;
+          user_id: string;
+          github_user_id: number;
+          github_username: string;
+          avatar_url: string | null;
+          access_token: string;
+          scope: string | null;
+          connected_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["github_accounts"]["Row"]> & {
+          user_id: string;
+          github_user_id: number;
+          github_username: string;
+          access_token: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["github_accounts"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "github_accounts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      project_repositories: {
+        Row: {
+          id: string;
+          project_id: string;
+          repo_id: number;
+          owner: string;
+          name: string;
+          full_name: string;
+          default_branch: string;
+          private: boolean;
+          html_url: string;
+          webhook_id: number | null;
+          webhook_secret: string;
+          connected_by: string;
+          created_at: string;
+        };
+        Insert: Partial<
+          Database["public"]["Tables"]["project_repositories"]["Row"]
+        > & {
+          project_id: string;
+          repo_id: number;
+          owner: string;
+          name: string;
+          full_name: string;
+          html_url: string;
+          webhook_secret: string;
+          connected_by: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["project_repositories"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "project_repositories_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: true;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "project_repositories_connected_by_fkey";
+            columns: ["connected_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      github_commits: {
+        Row: {
+          id: string;
+          project_id: string;
+          sha: string;
+          message: string;
+          author_name: string;
+          author_login: string | null;
+          author_avatar_url: string | null;
+          html_url: string;
+          committed_at: string;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["github_commits"]["Row"]> & {
+          project_id: string;
+          sha: string;
+          message: string;
+          author_name: string;
+          html_url: string;
+          committed_at: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["github_commits"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "github_commits_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      github_pull_requests: {
+        Row: {
+          id: string;
+          project_id: string;
+          number: number;
+          title: string;
+          state: string;
+          is_merged: boolean;
+          author_login: string;
+          author_avatar_url: string | null;
+          source_branch: string;
+          target_branch: string;
+          additions: number;
+          deletions: number;
+          changed_files: number;
+          html_url: string;
+          linked_task_id: string | null;
+          github_created_at: string;
+          github_updated_at: string;
+          merged_at: string | null;
+          closed_at: string | null;
+          created_at: string;
+        };
+        Insert: Partial<
+          Database["public"]["Tables"]["github_pull_requests"]["Row"]
+        > & {
+          project_id: string;
+          number: number;
+          title: string;
+          author_login: string;
+          source_branch: string;
+          target_branch: string;
+          html_url: string;
+          github_created_at: string;
+          github_updated_at: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["github_pull_requests"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "github_pull_requests_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "github_pull_requests_linked_task_id_fkey";
+            columns: ["linked_task_id"];
+            isOneToOne: false;
+            referencedRelation: "tasks";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

@@ -21,4 +21,6 @@ export const env = {
   supabaseServiceRoleKey: () => requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
   siteUrl: () =>
     process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  githubClientId: () => requireEnv("GITHUB_OAUTH_CLIENT_ID"),
+  githubClientSecret: () => requireEnv("GITHUB_OAUTH_CLIENT_SECRET"),
 };

@@ -25,7 +25,7 @@ a permission-denied error from Postgres), which is the safe failure mode.
 `src/lib/supabase/admin.ts` creates a Supabase client with the
 `service_role` key, which **bypasses RLS entirely**. It's guarded with
 `import "server-only"` (build fails if it's ever imported into client
-code) and is used in exactly two places:
+code) and is used in exactly three places:
 
 1. `src/services/members.ts`'s `redeemInvitationsForEmail` - runs once,
    automatically, right after a new user signs up, to attach them to any
@@ -34,8 +34,24 @@ code) and is used in exactly two places:
    own RLS-scoped session.
 2. `database/seed/seed.ts` - a local-only script that needs the Auth Admin
    API to create demo users.
+3. GitHub integration (Phase 4), in two shapes:
+   - `src/app/api/webhooks/github/route.ts` - GitHub's webhook POST carries
+     no DevFlow session cookie at all; it's authenticated by verifying the
+     HMAC-SHA256 `X-Hub-Signature-256` header against the per-repository
+     secret instead (see `src/lib/github.ts`'s `verifyWebhookSignature`),
+     not by `auth.uid()`, so there's no session for RLS to check.
+   - `src/services/github.ts`'s `connectRepository`/`disconnectRepository`/
+     `syncRepository` - these write to `github_commits`/
+     `github_pull_requests`/`project_repositories`, which have no
+     INSERT/UPDATE/DELETE policy for regular sessions at all (see
+     `database/migrations/0010_github_integration.sql`) since that data is
+     a system-managed mirror of GitHub, not something a user edits
+     directly. The `project:update` permission check happens in
+     `src/features/github/actions.ts` **before** these functions are
+     called, so authorization is still enforced - just at the action
+     layer instead of via an RLS policy on these specific tables.
 
-Never add a third use without a specific reason RLS can't express -
+Never add a further use without a specific reason RLS can't express -
 that's the whole point of keeping this key out of the request path.
 
 ## Authentication
@@ -51,6 +67,28 @@ that's the whole point of keeping this key out of the request path.
 - Passwords require a minimum of 8 characters
   (`src/lib/validations/auth.ts`); Supabase enforces this again
   server-side regardless of client validation.
+- Every `?next=`/`?redirect=` style post-login destination (email
+  confirmation, password reset, GitHub OAuth callback, `/login?redirect=`)
+  is validated to be a same-site relative path (starts with `/`, not
+  `//`) before it's used, to close the open-redirect pattern where a
+  crafted link could send a user who legitimately authenticates on
+  DevFlow off to an attacker's site afterward.
+
+## GitHub OAuth (Phase 4)
+
+- Uses a real GitHub OAuth App (not a personal access token) with the
+  `repo read:user` scope - `repo` is broad (needed to register webhooks
+  and read private repos), so only connect repositories you trust DevFlow
+  with.
+- The OAuth `state` parameter is a random value stored in a short-lived
+  httpOnly cookie and compared on callback (`src/app/api/github/oauth/`)
+  - standard CSRF protection for the OAuth flow.
+- Each connected repository gets its own randomly generated webhook
+  secret (`src/lib/github.ts`'s `generateWebhookSecret`), not a single
+  shared secret - a leaked secret for one repo doesn't compromise others.
+- The OAuth access token is stored as-is in `github_accounts.access_token`
+  with no at-rest encryption yet - flagged in the migration's column
+  comment and in "Not yet implemented" below.
 
 ## Secrets
 
@@ -92,6 +130,9 @@ mistakes DevFlow's current state for production-hardened:
 
 - **Rate limiting** on auth endpoints (login/register/password-reset) -
   planned for Phase 20 (Production Hardening).
+- **At-rest encryption of GitHub OAuth tokens** - `github_accounts.access_token`
+  is stored as plain text (protected by RLS, never sent to the client, but
+  not encrypted in the database itself) - Phase 20.
 - **Automated dependency/secret/container scanning** (Dependabot, Gitleaks,
   Trivy, Semgrep) - Phase 8.
 - **CSRF**: Next.js Server Actions include built-in origin checking, so

@@ -4,6 +4,9 @@
 
 - Node.js 20+ and npm
 - A free [Supabase](https://supabase.com) project (Postgres + Auth)
+- A [GitHub OAuth App](https://github.com/settings/developers) (Phase 4+
+  - only needed to test the GitHub integration; the rest of the app works
+  without it)
 - Git
 
 ## Setup
@@ -34,6 +37,16 @@ Optionally seed demo data (creates one user per role - see
 ```bash
 npm run db:seed
 ```
+
+To test GitHub integration, register an OAuth App at
+[github.com/settings/developers](https://github.com/settings/developers)
+- New OAuth App, Homepage URL `http://localhost:3000`, Authorization
+callback URL `http://localhost:3000/api/github/oauth/callback` - then set
+`GITHUB_OAUTH_CLIENT_ID`/`GITHUB_OAUTH_CLIENT_SECRET` in `.env.local`.
+Real-time webhook delivery needs a public URL GitHub can reach, which
+`localhost` isn't - use the in-app "Sync now" button for local
+development, or a tunnel (ngrok, Cloudflare Tunnel) if you want to see
+webhooks fire live before this app is deployed (Phase 6+).
 
 Start the dev server:
 

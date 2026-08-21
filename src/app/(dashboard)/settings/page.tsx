@@ -4,8 +4,10 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfileForm } from "@/features/auth/components/profile-form";
+import { GitHubAccountCard } from "@/features/github/components/github-account-card";
 import { requireProfile } from "@/services/auth";
 import { getActiveOrganization } from "@/services/organizations";
+import { getGitHubAccount } from "@/services/github";
 import { can } from "@/config/permissions";
 import { Button } from "@/components/ui/button";
 
@@ -13,7 +15,10 @@ export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const profile = await requireProfile();
-  const active = await getActiveOrganization();
+  const [active, githubAccount] = await Promise.all([
+    getActiveOrganization(),
+    getGitHubAccount(profile.id),
+  ]);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -25,6 +30,15 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <ProfileForm profile={profile} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">GitHub</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <GitHubAccountCard account={githubAccount} />
         </CardContent>
       </Card>
 

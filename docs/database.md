@@ -45,6 +45,10 @@ erDiagram
 | `activity_events`             | Append-only feed. Every mutating action writes one row here (see below). |
 | `task_attachments`             | Metadata for files attached to a task (Phase 2). The actual file bytes live in the private `task-attachments` Storage bucket. |
 | `audit_log`                      | Security-sensitive audit trail (Phase 3): logins, role/membership changes, deletions. See "Activity feed vs. audit log" below. |
+| `github_accounts`                  | A user's connected GitHub account (Phase 4): OAuth token, GitHub username/id. One per user. |
+| `project_repositories`               | The GitHub repo connected to a project (Phase 4). One per project. Holds the per-repo webhook secret. |
+| `github_commits`                       | Local cache of commits, kept current by webhooks + manual sync (Phase 4). |
+| `github_pull_requests`                   | Local cache of pull requests (Phase 4). Has `linked_task_id` so a PR can be linked to a DevFlow task. |
 
 Migrations live in [`database/migrations/`](../database/migrations/),
 numbered and applied in order. Each file is commented inline with what it
@@ -135,6 +139,27 @@ table needed. Because the bucket is private, every download goes through
 a freshly generated short-lived signed URL
 (`src/services/attachments.ts`'s `getAttachmentDownloadUrl`) rather than a
 public URL.
+
+## GitHub integration
+
+Migration `0010_github_integration.sql` adds four tables (see the table
+list above). Design notes:
+
+- **`github_accounts` is per-user, `project_repositories` is per-project.**
+  A user connects their own GitHub account once (OAuth); any project
+  admin with a connected account can then link a specific repo to a
+  project. Repo-connect/disconnect writes go through the admin client, not
+  RLS - see [`docs/security.md`](./security.md#the-service-role-key) for
+  why.
+- **Branches, contributors, releases, and GitHub issues are not
+  persisted.** They're fetched live from the GitHub API when a project's
+  Overview tab renders (`src/services/github.ts`'s
+  `getRepositorySnapshot`). Only commits and pull requests get dedicated
+  pages, local tables, and webhook-driven sync - pull requests specifically
+  need a stable local row for `linked_task_id` to reference.
+- **Every connected repo gets its own webhook secret**, generated
+  per-connection (not one shared app-wide secret), used to verify the
+  `X-Hub-Signature-256` header on incoming webhook deliveries.
 
 ## Applying migrations
 
