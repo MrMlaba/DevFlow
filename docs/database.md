@@ -27,6 +27,10 @@ erDiagram
     tasks ||--o{ comments : "commentable"
     issues ||--o{ comments : "commentable"
     issues }o--o| tasks : "linked_task_id"
+    projects ||--o{ incidents : contains
+    profiles ||--o{ incidents : "assignee / reporter"
+    incidents ||--o{ incident_updates : "has a timeline of"
+    profiles ||--o{ incident_updates : authors
 ```
 
 ## Tables
@@ -49,6 +53,8 @@ erDiagram
 | `project_repositories`               | The GitHub repo connected to a project (Phase 4). One per project. Holds the per-repo webhook secret. |
 | `github_commits`                       | Local cache of commits, kept current by webhooks + manual sync (Phase 4). |
 | `github_pull_requests`                   | Local cache of pull requests (Phase 4). Has `linked_task_id` so a PR can be linked to a DevFlow task. |
+| `incidents`                                | Production incidents (Phase 16). Severity, status, free-text `service`/`related_deployment` (no services or deployments table to reference - see `docs/devops-roadmap.md`). |
+| `incident_updates`                           | Append-only timeline for an incident: status/severity transitions plus free-text notes. |
 
 Migrations live in [`database/migrations/`](../database/migrations/),
 numbered and applied in order. Each file is commented inline with what it

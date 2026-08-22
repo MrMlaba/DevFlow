@@ -50,7 +50,7 @@ export const NAV_ITEMS: NavItem[] = [
     title: "Incidents",
     href: "/incidents",
     icon: AlertTriangle,
-    live: false,
+    live: true,
   },
   { title: "Team", href: "/team", icon: Users, live: true },
   { title: "Activity", href: "/activity", icon: ActivityIcon, live: true },

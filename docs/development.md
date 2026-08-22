@@ -34,6 +34,28 @@ for f in database/migrations/*.sql; do
 done
 ```
 
+`$DATABASE_URL`'s host matters: Supabase's direct connection host
+(`db.<project-ref>.supabase.co`) resolves IPv6-only, which fails with
+"Temporary failure in name resolution" on an IPv4-only network - not a
+credentials problem (found while applying Phase 16's migration; see
+`docs/devops-roadmap.md`). Use the connection pooler host instead,
+copied from the Supabase dashboard's Connect button ("Session pooler"
+or "Transaction pooler" tab):
+
+```
+postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+```
+
+Note the username is `postgres.<project-ref>`, not just `postgres`,
+when going through the pooler. If a fresh migration's table doesn't
+show up in the app right after applying it (a PostgREST error like
+`PGRST205: Could not find the table '...' in the schema cache`), force
+a refresh instead of waiting for PostgREST's own polling interval:
+
+```bash
+psql "$DATABASE_URL" -c "NOTIFY pgrst, 'reload schema';"
+```
+
 Optionally seed demo data (creates one user per role - see
 [`database/seed/README.md`](../database/seed/README.md)):
 

@@ -32,6 +32,9 @@ export type Permission =
   | "issue:create"
   | "issue:update"
   | "issue:delete"
+  | "incident:create"
+  | "incident:update"
+  | "incident:delete"
   | "comment:create"
   | "comment:delete_any"
   | "activity:view";
@@ -50,6 +53,9 @@ const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
     "issue:create",
     "issue:update",
     "issue:delete",
+    "incident:create",
+    "incident:update",
+    "incident:delete",
     "comment:create",
     "comment:delete_any",
     "activity:view",
@@ -64,6 +70,9 @@ const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
     "issue:create",
     "issue:update",
     "issue:delete",
+    "incident:create",
+    "incident:update",
+    "incident:delete",
     "comment:create",
     "comment:delete_any",
     "activity:view",
@@ -73,12 +82,15 @@ const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
     "task:update",
     "issue:create",
     "issue:update",
+    "incident:create",
+    "incident:update",
     "comment:create",
     "activity:view",
   ],
   reviewer: [
     "task:update",
     "issue:update",
+    "incident:update",
     "comment:create",
     "activity:view",
   ],

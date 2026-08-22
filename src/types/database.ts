@@ -51,6 +51,14 @@ export type InvitationStatus = "pending" | "accepted" | "revoked" | "expired";
 
 export type CommentableType = "task" | "issue";
 
+export type IncidentSeverity = "low" | "medium" | "high" | "critical";
+
+export type IncidentStatus =
+  | "investigating"
+  | "identified"
+  | "monitoring"
+  | "resolved";
+
 export interface Database {
   public: {
     Tables: {
@@ -640,6 +648,92 @@ export interface Database {
           },
         ];
       };
+      incidents: {
+        Row: {
+          id: string;
+          project_id: string;
+          title: string;
+          description: string | null;
+          service: string | null;
+          severity: IncidentSeverity;
+          status: IncidentStatus;
+          reporter_id: string;
+          assignee_id: string | null;
+          related_deployment: string | null;
+          root_cause: string | null;
+          resolution: string | null;
+          detected_at: string;
+          resolved_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["incidents"]["Row"]> & {
+          project_id: string;
+          title: string;
+          reporter_id: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["incidents"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "incidents_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "incidents_assignee_id_fkey";
+            columns: ["assignee_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "incidents_reporter_id_fkey";
+            columns: ["reporter_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      incident_updates: {
+        Row: {
+          id: string;
+          incident_id: string;
+          project_id: string;
+          author_id: string;
+          message: string;
+          previous_status: IncidentStatus | null;
+          new_status: IncidentStatus | null;
+          previous_severity: IncidentSeverity | null;
+          new_severity: IncidentSeverity | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["incident_updates"]["Row"]> & {
+          incident_id: string;
+          project_id: string;
+          author_id: string;
+          message: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["incident_updates"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "incident_updates_incident_id_fkey";
+            columns: ["incident_id"];
+            isOneToOne: false;
+            referencedRelation: "incidents";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "incident_updates_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -652,6 +746,8 @@ export interface Database {
       issue_priority: IssuePriority;
       invitation_status: InvitationStatus;
       commentable_type: CommentableType;
+      incident_severity: IncidentSeverity;
+      incident_status: IncidentStatus;
     };
     CompositeTypes: Record<string, never>;
   };

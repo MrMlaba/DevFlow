@@ -1363,10 +1363,106 @@ on; the app's own `/api/metrics` is the only new surface).
   the datasource YAML so it's stable and matches what's already
   written into the dashboards.
 
-## ⬜ Phase 16 - Incident management
+## ✅ Phase 16 - Incident management
 
-Incidents with severity/status/timeline, MTTR and failure-rate
-calculations, tied to deployments and monitoring alerts.
+**Problem it solves:** Phase 15 gave DevFlow real monitoring, but
+nothing to act on what it finds - if a dashboard shows an error-rate
+spike, there was nowhere in the app to actually track "we know about
+this, here's who's on it, here's what happened."
+
+**Why DevFlow needs it:** incidents are the natural next layer above
+Phase 15's metrics - not a new subsystem, but a place to record the
+human response to what monitoring surfaces (or to anything else that
+breaks, monitored or not).
+
+**How it works:** `database/migrations/0011_incidents.sql` adds two
+tables, mirroring the project's existing Tasks/Issues conventions
+exactly (same RLS shape via `is_project_member`/`is_project_admin`,
+same service-layer/server-action/Zod-schema split) rather than
+inventing a new pattern:
+
+- **`incidents`** - title, description, free-text `service` (DevFlow
+  is one app, not a services registry, so this just labels which part
+  broke), severity, status, reporter/assignee, and free-text
+  `related_deployment`. Not a foreign key to a deployments table -
+  Phase 10 established that deployments are live Vercel/GitHub API
+  data, not DevFlow-owned rows, so there's nothing to reference; a
+  typed-in SHA, tag, or deployment URL is the honest version of "tied
+  to deployments" here.
+- **`incident_updates`** - a structured timeline (status/severity
+  transitions plus free-text notes), separate from the generic
+  `comments` table (migration 0006) on purpose: a status change and a
+  comment are different things worth telling apart when reading back
+  what happened. Append-only, same reasoning as `activity_events`.
+- **"Tied to... monitoring alerts"**: no Alertmanager added - Phase 15
+  already found this machine's memory ceiling the hard way, and a
+  human deciding "this metric spike is worth an incident" and clicking
+  Report Incident is a reasonable, honest stand-in for an automated
+  alert pipeline at this project's scale.
+- **UI**: `/incidents` is global (like Security, Phase 8), not nested
+  under a project, since production incidents aren't naturally
+  scoped to one project the way tasks/issues are - `CreateIncidentDialog`
+  includes its own project picker rather than requiring a prior
+  project navigation. MTTR is computed from real `detected_at`/
+  `resolved_at` timestamps using the same formula the Phase 16
+  placeholder's mock data already used - only the data source changed.
+- **`src/app/(dashboard)/monitoring`** also got fixed in the process
+  (a leftover gap from Phase 15, not new scope) - see that phase's
+  entry above.
+
+**How it's configured:** applied directly via `psql` against the live
+Supabase project through its connection pooler
+(`aws-0-<region>.pooler.supabase.com:5432`), not the direct
+`db.<ref>.supabase.co` host - see "what was learned."
+
+**How it integrates:** reuses `src/config/permissions.ts`'s existing
+role matrix (`incident:create`/`update`/`delete`, same shape as
+`issue:*`) and `src/services/activity.ts`'s activity feed, so incidents
+show up in the same places tasks/issues already do without a parallel
+system.
+
+**What was learned:**
+
+- **A Supabase project's direct connection host resolves IPv6-only.**
+  `db.<project-ref>.supabase.co` failed with "Temporary failure in
+  name resolution" on this network - not a credentials problem, an
+  IPv4-only network unable to route to an IPv6-only address. The
+  connection pooler (Supavisor) host,
+  `aws-0-<region>.pooler.supabase.com`, resolves over IPv4 and needs a
+  different username shape (`postgres.<project-ref>`, not just
+  `postgres`) - found via the exact connection string Supabase's own
+  dashboard "Connect" button provides, not by guessing.
+- **DDL applied outside Supabase's own tooling needs an explicit
+  schema-cache reload.** Right after applying the migration via
+  `psql`, the app's first requests failed with PostgREST's `PGRST205:
+  Could not find the table 'public.incidents' in the schema cache` -
+  the table existed, but PostgREST's cached introspection didn't know
+  yet. `NOTIFY pgrst, 'reload schema';` against the same connection
+  fixed it immediately, faster than waiting for PostgREST's own
+  polling interval.
+- **A Select whose `value` is a pure prop, with no local state, isn't
+  safe for a Server-Action-backed control.** `IncidentStatusSelect`
+  (modeled directly on the existing `IssueStatusSelect`) initially had
+  the same shape: `<Select value={status} onValueChange={...}>` with
+  `status` passed straight through as a prop. Verified via Playwright
+  against the real database: changing status to "identified" produced
+  a *second*, unprompted timeline entry seconds later - "changed from
+  identified back to investigating" - nobody clicked that. The gap
+  between the Server Action completing and `revalidatePath`'s refresh
+  actually landing left the Select briefly showing a value its
+  controlled `value` prop didn't yet agree with; Base UI's Select
+  reconciles that mismatch by re-firing `onValueChange` with the stale
+  prop value, which the handler treated as a real user action and
+  logged as one. Fixed with local optimistic state, reset from the
+  prop only when the prop actually changes (React's own recommended
+  "adjusting state when a prop changes" pattern, done in the render
+  body rather than inside a `useEffect`, which the project's ESLint
+  config flags for exactly this - a cascading-render anti-pattern).
+  Re-verified against the real database after the fix: one status
+  click, one timeline entry, no phantom reversion. Worth checking
+  whether `IssueStatusSelect` has the same latent issue, since it's
+  the same shape - not fixed here, since that's a different feature
+  outside this phase's scope.
 
 ## ⬜ Phase 17 - GitOps with Argo CD
 
