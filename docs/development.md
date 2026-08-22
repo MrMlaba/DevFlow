@@ -281,6 +281,67 @@ prompts for `sudo`, which hangs forever with no TTY to answer it in a
 non-interactive shell. Run it as root directly instead:
 `wsl -u root -d Ubuntu -- bash -c "curl -sfL https://get.k3s.io | sh -"`.
 
+**If your WSL2 VM seems to keep crash-looping pods for no clear
+reason** (restart counts climbing on pods you haven't touched,
+including CoreDNS/Traefik), check `wsl --status` / a plain `wsl -u root
+-d Ubuntu -- bash -c "uptime"` before assuming it's a memory problem
+with your workload - WSL2's default `vmIdleTimeout` (60s with no
+connected client) will shut the whole VM down between spaced-out
+commands and cold-boot it again on the next one, and commands landing
+right after a cold boot look exactly like an unstable cluster. Add to
+(or create) `%UserProfile%\.wslconfig`:
+
+```ini
+[wsl2]
+vmIdleTimeout=-1
+```
+
+then `wsl --shutdown` once to apply it.
+
+## Monitoring locally (Phase 15)
+
+`kubernetes/monitoring/` - Prometheus + Grafana, deployed into the same
+k3s cluster Phase 13 set up. See `docs/devops-roadmap.md` (Phase 15)
+for what's monitored and what was deliberately left out (Loki, DB
+connections).
+
+```bash
+wsl -u root -d Ubuntu
+cd /mnt/c/path/to/DevFlow/kubernetes/monitoring
+k3s kubectl apply -f namespace.yaml -f prometheus-rbac.yaml
+
+# Real values, not the example files - same pattern as
+# kubernetes/secret.example.yaml. Use the same METRICS_TOKEN value for
+# both - Prometheus presents it back to the app's /api/metrics.
+k3s kubectl create secret generic prometheus-secrets -n monitoring \
+  --from-literal=metrics-token=<your METRICS_TOKEN>
+k3s kubectl create secret generic grafana-secrets -n monitoring \
+  --from-literal=admin-password=$(openssl rand -hex 16)
+
+k3s kubectl apply -f prometheus-configmap.yaml -f prometheus-deployment.yaml -f prometheus-service.yaml
+k3s kubectl apply -f grafana-configmap.yaml -f grafana-deployment.yaml -f grafana-service.yaml
+```
+
+The app's own image needs `METRICS_TOKEN` added to `devflow-secrets`
+(see `kubernetes/secret.example.yaml`) and rebuilding/redeploying if
+you're running an image from before this phase.
+
+**Access** (same reasoning as accessing the app itself in Phase 13 -
+`kubectl port-forward`, not the LoadBalancer):
+
+```bash
+k3s kubectl port-forward -n monitoring svc/grafana 3001:3000
+# http://localhost:3001 - admin / the password you generated above
+k3s kubectl port-forward -n monitoring svc/prometheus 9090:9090
+# http://localhost:9090 - raw PromQL, Status > Targets to check scrape health
+```
+
+If a pod goes silently missing on startup with no useful `kubectl
+logs` output, `crictl logs`/`crictl stats` (run as root inside WSL2,
+talking to containerd directly instead of through the kubelet's proxy)
+was the tool that actually explained it during this phase - see Phase
+15's "what was learned" for a real example.
+
 ## Running with Docker
 
 Builds and runs the app in a container against your existing cloud

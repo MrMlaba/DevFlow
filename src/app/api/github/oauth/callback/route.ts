@@ -5,8 +5,9 @@ import { requireUser } from "@/services/auth";
 import { env } from "@/config/env";
 import { exchangeCodeForToken, getAuthenticatedUser } from "@/lib/github";
 import { upsertGitHubAccount } from "@/services/github";
+import { withMetrics } from "@/lib/metrics";
 
-export async function GET(request: Request) {
+export const GET = withMetrics("/api/github/oauth/callback", async (request) => {
   const user = await requireUser();
   const { searchParams, origin } = new URL(request.url);
   const cookieStore = await cookies();
@@ -47,4 +48,4 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.redirect(`${origin}${next}?github_connected=1`);
-}
+});

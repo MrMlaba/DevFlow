@@ -1,0 +1,83 @@
+# Four scrape jobs, each covering a different slice of the spec (CPU/mem,
+# request rate/latency/error rate): no all-in-one exporter did the whole
+# job, so this composes real, purpose-built sources instead of faking one.
+# See docs/devops-roadmap.md (Phase 15) for why each exists and what was
+# tried and dropped (in-process request counting from proxy.ts, notably).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+
+    scrape_configs:
+      # Prometheus's own health/performance.
+      - job_name: prometheus
+        static_configs:
+          - targets: ["localhost:9090"]
+
+      # Container-level CPU/memory (the spec's "CPU, memory") straight from
+      # each node's kubelet, reached through the API server's proxy rather
+      # than the node IP directly - works the same whether nodes are
+      # reachable from Prometheus's pod network or not, and reuses the
+      # ServiceAccount token already mounted for auth instead of a second
+      # credential.
+      - job_name: kubernetes-nodes-cadvisor
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        authorization:
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+
+      # Traefik (k3s's bundled ingress controller) sits in front of every
+      # request that reaches the app - real, accurate whole-app HTTP
+      # request rate/latency/error rate (the spec's other three metrics),
+      # without the in-process isolation problem proxy.ts hit. Prometheus
+      # metrics are on by default in k3s's Traefik (--metrics.prometheus,
+      # entrypoint :9100) - nothing to turn on, just something to point at.
+      - job_name: traefik
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ["kube-system"]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            regex: traefik
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: "${1}:9100"
+
+      # DevFlow's own /api/metrics (src/lib/metrics.ts): Node.js
+      # process health (event loop lag, heap) plus real status/duration
+      # for the route handlers wrapped in withMetrics (health check,
+      # GitHub OAuth, webhook receiver). Bearer token matches this app's
+      # METRICS_TOKEN - see prometheus-secret.example.yaml.
+      - job_name: devflow
+        metrics_path: /api/metrics
+        authorization:
+          credentials_file: /etc/prometheus-secrets/metrics-token
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ["devflow"]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: devflow
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: "${1}:3000"

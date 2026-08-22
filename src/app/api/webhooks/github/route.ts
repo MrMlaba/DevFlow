@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyWebhookSignature } from "@/lib/github";
 import { logActivity } from "@/services/activity";
 import type { ProjectRepository } from "@/services/github";
+import { withMetrics } from "@/lib/metrics";
 
 /**
  * Receives GitHub webhook deliveries. No DevFlow user session exists here
@@ -17,7 +18,7 @@ import type { ProjectRepository } from "@/services/github";
  * this phase, or rely on the manual "Sync now" button, which doesn't need
  * a public URL. Real-time delivery works automatically once deployed.
  */
-export async function POST(request: Request) {
+export const POST = withMetrics("/api/webhooks/github", async (request) => {
   const rawBody = await request.text();
   const event = request.headers.get("x-github-event");
   const signature = request.headers.get("x-hub-signature-256");
@@ -80,7 +81,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true });
-}
+});
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 

@@ -1,0 +1,68 @@
+# Single replica, emptyDir storage, short retention: this machine's WSL2
+# VM had well under 1GB free even before this (see docs/devops-roadmap.md
+# Phase 13's memory saga) - a PersistentVolume and multi-day retention
+# would buy durability this cluster doesn't need for a learning setup at
+# the cost of headroom it doesn't have. Losing history on a pod restart is
+# an accepted, documented trade-off, not an oversight.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.13.2
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=24h
+          ports:
+            - containerPort: 9090
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: secrets
+              mountPath: /etc/prometheus-secrets
+              readOnly: true
+            - name: storage
+              mountPath: /prometheus
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: secrets
+          secret:
+            secretName: prometheus-secrets
+        - name: storage
+          emptyDir:
+            sizeLimit: 512Mi

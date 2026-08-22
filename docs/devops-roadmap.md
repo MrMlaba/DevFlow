@@ -1208,10 +1208,152 @@ schedules it*, not what it is.
 Production workload moved to EKS: node groups, IAM, load balancer,
 networking, autoscaling - provisioned via the Phase 12 Terraform.
 
-## ⬜ Phase 15 - Monitoring and observability
+## ✅ Phase 15 - Monitoring and observability
 
-Prometheus (CPU, memory, request rate/latency, error rate, DB
-connections), Grafana dashboards, Loki logs.
+**Problem it solves:** Phase 13 stood up a real cluster and Phase 11/12
+a real EC2 instance, but neither one has ever been *observable* - no
+metrics, no dashboards, nothing beyond `kubectl get pods` and manual
+`curl` checks. If a pod started leaking memory or request latency
+crept up, nothing in this project would notice.
+
+**Why DevFlow needs it:** Phase 13's k3s cluster is still running, so
+this phase has real infrastructure to point at rather than building a
+monitoring stack with nothing to monitor. Phase 14 (AWS EKS) stays
+skipped - no free tier for the control plane, and the user was explicit
+about not adding paid resources - so this phase targets the local
+cluster instead of waiting on Phase 14.
+
+**How it works:** the original phase plan (Prometheus, Grafana, Loki)
+assumed a self-hosted Postgres to pull DB-connection metrics from and a
+Next.js request path that's straightforward to instrument end-to-end.
+Neither is quite true here (Supabase is managed - same reasoning as
+skipping RDS in Phase 11/12; and it turns out proxy.ts's request path
+isn't as instrumentable as it looks - see below), so the scope adapted
+to four real, verified data sources instead of one big exporter:
+
+- **`src/lib/metrics.ts`** - a `prom-client` `Registry` cached on
+  `globalThis` (survives Next.js dev-mode hot reload, which would
+  otherwise re-register the same metric name and throw). Node.js
+  process metrics (`collectDefaultMetrics` - heap, event loop lag, GC)
+  come free. `withMetrics()` wraps a route handler to record its real
+  status code and duration - applied to `/api/health` (hit constantly
+  by k8s probes, a genuine "is the app responsive" signal), the GitHub
+  OAuth start/callback routes, and the webhook receiver.
+- **`src/instrumentation.ts`**'s `onRequestError` hook - fires on any
+  uncaught error across render/route/action/proxy contexts, broader
+  than the route-handler wrapping alone since most of the app is Server
+  Actions, which can't be wrapped the same way. This is the "error
+  rate" signal for the app itself.
+- **`src/app/api/metrics/route.ts`** - the scrape endpoint, gated by a
+  bearer token (`METRICS_TOKEN`) the same way the webhook route is
+  gated by an HMAC signature: the Ingress routes every path to this
+  app, so without a check this would be publicly exposed. Unset token
+  (local dev, Vercel) means the route 404s instead of serving
+  unauthenticated metrics.
+- **Traefik's own Prometheus metrics** (`kubernetes/monitoring/prometheus-configmap.yaml`,
+  job `traefik`) - k3s's bundled Traefik ships with
+  `--metrics.prometheus=true` already on, nothing to turn on. This is
+  the real "request rate/latency/error rate for the whole app" signal
+  the original plan wanted, coming from a genuinely separate process
+  sitting in front of every request - not faked in-app.
+- **cAdvisor via the kubelet** (job `kubernetes-nodes-cadvisor`,
+  reached through the API server's proxy) - real per-container CPU and
+  memory, the spec's "CPU, memory" line, with no extra exporter pod to
+  run.
+- **Grafana** (`kubernetes/monitoring/grafana-configmap.yaml`) - one
+  dashboard, 8 panels, provisioned as files (not click-ops) so a pod
+  restart doesn't lose it. Every panel query was run directly against
+  Prometheus and confirmed to return real data before being written
+  into the dashboard JSON - see `docs/development.md`.
+- **Loki: skipped**, not deferred quietly - a single-node, 2-replica
+  local cluster already has `kubectl logs`/`crictl logs` for real-time
+  access; Loki's actual value (aggregation across many replicas/nodes,
+  long retention) isn't needed here, and this machine's memory ceiling
+  (see below) made "one more pod" a real cost, not a free add.
+- **DB connections: skipped** - Supabase is a managed service with its
+  own dashboard-level metrics; there's no self-hosted Postgres for a
+  DevFlow-side exporter to scrape, same reasoning as skipping RDS in
+  Phase 11/12.
+
+**How it's configured:** `kubernetes/monitoring/` - a `monitoring`
+namespace, a `ClusterRole` giving Prometheus read-only access to nodes/
+pods/services across namespaces (needed for both cAdvisor's node proxy
+and pod-based service discovery), Prometheus and Grafana Deployments
+with deliberately tight resource requests and short/no retention
+(ephemeral `emptyDir`, not a PersistentVolume - losing history on a
+restart is an accepted trade-off on this hardware, not an oversight).
+See `kubernetes/monitoring/README.md`-equivalent notes in
+`kubernetes/README.md` for the exact apply order and how to create the
+two Secrets (`prometheus-secrets`, `grafana-secrets`) imperatively.
+
+**How it integrates:** reuses Phase 13's cluster and Phase 9's exact
+image-build pipeline - the metrics code lives in the same Next.js app,
+so it ships in the same GHCR image everything else already runs. Prometheus
+scrapes across the `devflow` and `kube-system` namespaces without
+needing anything deployed there to change (Traefik's flag was already
+on; the app's own `/api/metrics` is the only new surface).
+
+**What was learned:**
+
+- **In-process request metrics from `proxy.ts` don't work, even
+  self-hosted** - tried first, since proxy.ts is the one place that
+  sees every request. A counter incremented there never showed up when
+  read back from a route handler's registry, despite both living in the
+  same `next start` process. The Next.js docs' warning against relying
+  on shared globals in Proxy turned out to apply here too, not just to
+  edge/CDN-distributed deployments as first assumed - confirmed by
+  testing, not by re-reading the docs more carefully. Traefik's
+  independently-running metrics endpoint replaced this need entirely,
+  and better: it sees real final response status, which proxy.ts
+  (which runs *before* rendering) architecturally cannot.
+- **The WSL2 VM was auto-shutting down between diagnostic checks** -
+  by far the most time this phase cost. Default `vmIdleTimeout`
+  (60s with no connected client) meant every gap between commands while
+  verifying the cluster let the VM shut down and cold-boot again on the
+  next one - and a boot that races diagnostic commands landing right
+  after it produces exactly the symptoms Phase 13 saw and re-diagnosed
+  as new: "pod sandbox changed" events, corrupted journal files,
+  climbing restart counts on *every* pod including CoreDNS and Traefik,
+  not just the new monitoring pods. `dmesg` showing repeated
+  `Received SIGTERM from PID 1 (systemd-shutdow)` a few dozen seconds
+  apart was the tell. Fix: `vmIdleTimeout=-1` in `.wslconfig`. The
+  broader lesson: an environment that looks like it's crash-looping
+  under memory pressure might instead be an outside process
+  (deliberately or not) restarting it out from under whatever's
+  running - check uptime and `dmesg` before assuming the workload
+  itself is the problem.
+- **Grafana's real startup memory footprint is well past a
+  conservative guess.** 200Mi (sized the same conservative way as every
+  other pod in this project) wasn't enough, and it failed *silently* -
+  no crash log, no `OOMKilled` reason from Kubernetes, just gone
+  mid-startup. `kubectl logs` was itself unreliable during this
+  phase's memory pressure (`502 Bad Gateway` from the kubelet's log
+  proxy); `crictl logs`/`crictl stats` - talking to containerd
+  directly, bypassing the kubelet - was the tool that actually showed
+  Grafana alive and migrating (719 SQLite migrations, then loading
+  plugins, then registering each internal app's API) right up until it
+  vanished. Watching `crictl stats` live during a startup showed real
+  usage climbing past 400Mi before settling around 430Mi once running -
+  the limit is now 600Mi, sized off an observed number, not a guess.
+- **A single-replica Deployment's default `RollingUpdate` strategy can
+  deadlock itself under memory pressure.** With `replicas: 1`,
+  `RollingUpdate` won't kill the old pod until the new one is Ready -
+  but the new one couldn't get Ready while the old one was still
+  consuming the memory it needed to finish starting. Two Grafana pods
+  from two ReplicaSets ended up competing for the same tight memory
+  budget indefinitely. `strategy: Recreate` (accept a few seconds of
+  dashboard downtime on redeploy) broke the deadlock immediately.
+- **A dashboard can look correctly provisioned and still be silently
+  broken.** The datasource ConfigMap set `name: Prometheus` but no
+  `uid`, so Grafana auto-generated one (`PBFA97CFB590B2093`) - while
+  every panel in the dashboard JSON referenced `"uid": "Prometheus"`
+  literally, matching the *name* rather than the real generated uid.
+  Every panel would have rendered "datasource not found" with no
+  obvious error at the provisioning level. Caught by querying the
+  datasource proxy API directly and getting `"Unable to find
+  datasource"` back - fixed by pinning `uid: Prometheus` explicitly in
+  the datasource YAML so it's stable and matches what's already
+  written into the dashboards.
 
 ## ⬜ Phase 16 - Incident management
 

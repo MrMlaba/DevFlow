@@ -55,6 +55,15 @@ k3s kubectl port-forward -n devflow svc/devflow 8080:80
 # http://localhost:8080 - WSL2 forwards this to Windows automatically
 ```
 
+## Monitoring (Phase 15)
+
+`monitoring/` - Prometheus + Grafana for this same cluster, deployed
+separately from the app itself. See `docs/development.md` ("Monitoring
+locally") for the exact apply commands and `docs/devops-roadmap.md`
+(Phase 15) for what's monitored, what was deliberately left out (Loki,
+DB connections), and the real bugs this hit getting Grafana to run
+reliably on this machine's memory budget.
+
 ## Alternative: Kind
 
 `kind-config.yaml` is provided for Kind specifically, for a machine with

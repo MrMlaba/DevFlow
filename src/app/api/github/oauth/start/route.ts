@@ -4,13 +4,14 @@ import crypto from "node:crypto";
 import { requireUser } from "@/services/auth";
 import { env } from "@/config/env";
 import { buildAuthorizeUrl } from "@/lib/github";
+import { withMetrics } from "@/lib/metrics";
 
 /**
  * Kicks off the GitHub OAuth flow for connecting the signed-in user's
  * GitHub account (not a specific repo - see /projects/[id]/settings for
  * that). `next` controls where the callback sends them back to.
  */
-export async function GET(request: Request) {
+export const GET = withMetrics("/api/github/oauth/start", async (request) => {
   await requireUser();
 
   const { searchParams } = new URL(request.url);
@@ -52,4 +53,4 @@ export async function GET(request: Request) {
   });
 
   return response;
-}
+});

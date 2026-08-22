@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  # Recreate, not the default RollingUpdate: with replicas=1, RollingUpdate
+  # won't kill the old pod until the new one is Ready - which, on a
+  # memory-tight host, means the old pod keeps consuming memory the new
+  # one needs to finish starting, a real deadlock this hit directly (see
+  # docs/devops-roadmap.md Phase 15). Recreate accepts a few seconds of
+  # dashboard downtime on redeploy instead, which this single-admin setup
+  # can afford.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:13.2.0
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: admin-password
+            # No anonymous/public signup - this is a single-admin learning
+            # setup, not a shared team instance.
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+          # 200Mi (this project's original conservative guess) wasn't
+          # enough - confirmed via `crictl logs`/`crictl stats` (kubectl
+          # logs was itself unreliable during the memory crisis this phase
+          # ran into) that Grafana was dying silently mid-startup, no
+          # graceful log line or OOMKilled reason from Kubernetes either -
+          # just gone. Watched it live climb past 312MB during its
+          # grafana-apiserver bootstrap phase (registering each app's
+          # GroupVersion - alerting, advisor, etc.) before hitting a 400Mi
+          # ceiling too. Once idle and running, actual usage settles much
+          # lower than this - startup, not steady state, is what needs the
+          # room.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 600Mi
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /etc/grafana/dashboards
+          # Generous delays and thresholds: this machine's WSL2 VM has been
+          # observed under enough memory/CPU pressure (docs/devops-roadmap.md
+          # Phase 13 and 15) that Grafana's own startup can take well past
+          # the defaults you'd use on normal hardware - the first version of
+          # this probe (5s/15s) caused a genuine crash loop, killing Grafana
+          # mid-startup over and over rather than catching a real hang.
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 90
+            periodSeconds: 15
+            failureThreshold: 6
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboards
+          configMap:
+            name: grafana-dashboard-devflow

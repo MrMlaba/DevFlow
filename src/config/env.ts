@@ -23,4 +23,9 @@ export const env = {
     process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
   githubClientId: () => requireEnv("GITHUB_OAUTH_CLIENT_ID"),
   githubClientSecret: () => requireEnv("GITHUB_OAUTH_CLIENT_SECRET"),
+  // Optional, not required(): unset almost everywhere (local dev, Vercel)
+  // since only the in-cluster Prometheus scraping /api/metrics needs it.
+  // Unset means that route responds 404 instead of serving unauthenticated
+  // metrics - see src/app/api/metrics/route.ts.
+  metricsToken: () => process.env.METRICS_TOKEN,
 };
