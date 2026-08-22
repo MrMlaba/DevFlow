@@ -45,7 +45,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Security", href: "/security", icon: ShieldAlert, live: true },
   { title: "Deployments", href: "/deployments", icon: Rocket, live: true },
   { title: "Environments", href: "/environments", icon: Boxes, live: true },
-  { title: "Monitoring", href: "/monitoring", icon: LineChart, live: false },
+  { title: "Monitoring", href: "/monitoring", icon: LineChart, live: true },
   {
     title: "Incidents",
     href: "/incidents",

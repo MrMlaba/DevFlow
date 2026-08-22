@@ -1265,6 +1265,14 @@ to four real, verified data sources instead of one big exporter:
   restart doesn't lose it. Every panel query was run directly against
   Prometheus and confirmed to return real data before being written
   into the dashboard JSON - see `docs/development.md`.
+- **The in-app `/monitoring` page** (`src/app/(dashboard)/monitoring/page.tsx`)
+  now reads `getSelfMetricsSnapshot()` (`src/lib/metrics.ts`) instead of
+  `MOCK_METRICS` - the same in-process registry `/api/metrics` serves,
+  read directly rather than over the network. Deliberately *not* the
+  Traefik/cAdvisor cluster-wide numbers: those only exist inside the
+  k3s cluster, unreachable from wherever this page is actually running
+  (Vercel, EC2, or k3s itself) - self-metrics work identically no
+  matter the deployment target, which cluster-only data can't.
 - **Loki: skipped**, not deferred quietly - a single-node, 2-replica
   local cluster already has `kubectl logs`/`crictl logs` for real-time
   access; Loki's actual value (aggregation across many replicas/nodes,

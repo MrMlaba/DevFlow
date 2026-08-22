@@ -68,6 +68,56 @@ export function normalizeRoute(pathname: string): string {
 }
 
 /**
+ * Real numbers for the in-app Monitoring page (src/app/(dashboard)/monitoring),
+ * read straight out of this same process's registry - no network hop to
+ * Prometheus, so it works identically wherever DevFlow is actually running
+ * (Vercel, the EC2 instance, k3s), not just when a developer happens to have
+ * `kubectl port-forward` open to the k3s-only Prometheus/Grafana this phase
+ * also built. Deliberately snapshot values (a single reading), not rates -
+ * a rate needs two points in time, which a single page render can't cheaply
+ * produce without its own storage. "Average" latency (sum/count), not a
+ * percentile: computing a real percentile means aggregating histogram
+ * buckets across every route label first, more precision than a quick
+ * snapshot card needs.
+ */
+export async function getSelfMetricsSnapshot() {
+  const errors = await metrics.requestErrorsTotal.get();
+  const errorCount = errors.values.reduce((sum, v) => sum + v.value, 0);
+
+  const durations = await metrics.httpRequestDurationSeconds.get();
+  const sum = durations.values.find((v) => v.metricName?.endsWith("_sum"));
+  const count = durations.values.find((v) => v.metricName?.endsWith("_count"));
+  const healthCount = durations.values.find(
+    (v) => v.metricName?.endsWith("_count") && v.labels.route === "/api/health",
+  );
+
+  const memory = await metrics.registry.getSingleMetric("process_resident_memory_bytes")?.get();
+  const memoryBytes = memory?.values[0]?.value ?? null;
+
+  const cpu = await metrics.registry.getSingleMetric("process_cpu_seconds_total")?.get();
+  const cpuSeconds = cpu?.values[0]?.value ?? null;
+
+  const eventLoopLag = await metrics.registry.getSingleMetric("nodejs_eventloop_lag_seconds")?.get();
+  const eventLoopLagMs = eventLoopLag ? eventLoopLag.values[0]!.value * 1000 : null;
+
+  const startTime = await metrics.registry.getSingleMetric("process_start_time_seconds")?.get();
+  const uptimeSeconds = startTime
+    ? Date.now() / 1000 - startTime.values[0]!.value
+    : null;
+
+  return {
+    uptimeSeconds,
+    memoryBytes,
+    cpuSeconds,
+    eventLoopLagMs,
+    avgRouteHandlerLatencyMs:
+      sum && count && count.value > 0 ? (sum.value / count.value) * 1000 : null,
+    healthChecksServed: healthCount?.value ?? 0,
+    uncaughtErrors: errorCount,
+  };
+}
+
+/**
  * Wraps a route.ts handler to record real status code and duration -
  * accurate because, unlike proxy.ts, a route handler sees the actual
  * Response it returns. Use for endpoints worth watching individually

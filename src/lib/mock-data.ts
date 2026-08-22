@@ -1,25 +1,9 @@
 /**
  * Realistic placeholder data for DevOps surfaces that don't have a real
- * backend yet (monitoring is Phase 15, incidents are Phase 16). Every page
- * that renders this data shows a <PreviewDataBanner /> so it's never
- * mistaken for something DevFlow actually measured. See docs/devops-roadmap.md.
+ * backend yet (incidents are Phase 16). Every page that renders this data
+ * shows a <PreviewDataBanner /> so it's never mistaken for something
+ * DevFlow actually measured. See docs/devops-roadmap.md.
  */
-
-export interface MockMetric {
-  label: string;
-  value: string;
-  trend: "up" | "down" | "flat";
-  goodDirection: "up" | "down";
-}
-
-export const MOCK_METRICS: MockMetric[] = [
-  { label: "Request rate", value: "412 req/min", trend: "up", goodDirection: "up" },
-  { label: "P95 latency", value: "218 ms", trend: "flat", goodDirection: "down" },
-  { label: "Error rate", value: "0.42%", trend: "up", goodDirection: "down" },
-  { label: "CPU usage", value: "38%", trend: "flat", goodDirection: "down" },
-  { label: "Memory usage", value: "61%", trend: "up", goodDirection: "down" },
-  { label: "DB connections", value: "24 / 100", trend: "flat", goodDirection: "down" },
-];
 
 export interface MockIncident {
   id: number;
