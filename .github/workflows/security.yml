@@ -37,7 +37,7 @@ jobs:
             dir /repo --report-format sarif --report-path /repo/gitleaks.sarif \
             --exit-code 0 --redact
       - if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: gitleaks.sarif
           category: gitleaks
@@ -54,7 +54,7 @@ jobs:
             --config p/security-audit --config p/typescript --config p/react \
             --sarif-output semgrep.sarif --metrics=off .
       - if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
           category: semgrep
@@ -77,7 +77,7 @@ jobs:
           severity: "CRITICAL,HIGH"
           exit-code: "0"
       - if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy.sarif
           category: trivy
